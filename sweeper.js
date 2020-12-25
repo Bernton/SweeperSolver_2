@@ -1,131 +1,227 @@
-// if (document.sweepId) {
-//     clearInterval(document.sweepId);
-// }
+const States = Object.freeze({
+    start: "start",
+    solving: "solving",
+    stuck: "stuck",
+    solved: "solved",
+    death: "death",
+});
 
-prompt = () => "cancel";
-
-let sweepAlive = true;
-let startSweepEndless = () => { sweepAlive = true; setTimeout(sweepEndless, 0) };
-let stopSweep = () => sweepAlive = false;
-
-let won = 0;
-let lost = 0;
-let lastState = null;
-
-let printStatus = () => {
-    console.log("Win fraction: " + ((won / (won + lost) * 100).toFixed(2)) + "% " + won + ":" + lost);
-}
-
-let sweepEndless = () => {
-    const idleTime = 3000;
-    let state = sweep(true);
-    let time;
-
-    if (state === "start" || state === "finish" || state === "death") {
-        time = idleTime;
-
-        if (state !== "start") {
-            setTimeout(startNewGame, idleTime);
-        }
-    }
-    else {
-        time = 0;
-    }
-
-    if (state === "finish" && lastState !== "finish") {
-        won += 1;
-    } else if (state === "death" && lastState !== "death") {
-        lost += 1;
-    }
-
-    lastState = state;
-
-    if (sweepAlive) {
-        setTimeout(sweepEndless, time + 0);
+const DefaultAutoSweepTimingOptions = {
+    baseIdleTime: 0,
+    solvingIdleTime: 0,
+    newGameStateIdleTime: 3000,
+    restDefaultIdleTime: 0,
+    restIdleTimes: {
+        start: null,
+        stuck: null,
+        solved: null,
+        death: null
     }
 };
 
-startSweepEndless();
-
-//document.sweepId = setInterval(sweep, 1000);
-//document.addEventListener('mousedown', sweep);
-
-document.addEventListener('keydown', (e) => {
-    if (e.code === "KeyS") {
-        sweep(true);
+const AutoSweepInfo = {
+    autoSweepEnabled: false,
+    lastRestState: null,
+    stateCounts: {
+        start: 0,
+        solving: 0,
+        stuck: 0,
+        solved: 0,
+        death: 0
     }
-});
+}
 
+function formatLogAutoSweepInfo() {
+    let solved = AutoSweepInfo.stateCounts[States.solved];
+    let death = AutoSweepInfo.stateCounts[States.death];
+    let winPercentage = (solved / (solved + death) * 100);
+    console.log("Solved: " + (winPercentage.toFixed(2)) + "% " + solved + ":" + death);
+}
+
+function disableEndOfGamePrompt() {
+    prompt = () => "cancel";
+}
+
+function resetAutoSweepInfo() {
+    AutoSweepInfo.autoSweepEnabled = false;
+    AutoSweepInfo.lastRestState = null;
+    AutoSweepInfo.stateCounts.start = 0;
+    AutoSweepInfo.stateCounts.solving = 0;
+    AutoSweepInfo.stateCounts.stuck = 0;
+    AutoSweepInfo.stateCounts.solved = 0;
+    AutoSweepInfo.stateCounts.death = 0;
+}
+
+function startAutoSweep(withAutoSolve = true, timingOptions = DefaultAutoSweepTimingOptions) {
+    AutoSweepInfo.autoSweepEnabled = true;
+    setTimeout(() => autoSweep(withAutoSolve, timingOptions), 0);
+}
+
+function stopAutoSweep() {
+    AutoSweepInfo.autoSweepEnabled = false;
+}
+
+function lastWasNewGameState() {
+    return isNewGameState(AutoSweepInfo.lastRestState);
+}
+
+function isNewGameState(state) {
+    return state === States.solved || state === States.death;
+}
+
+function autoSweep(withAutoSolve = true, timingOptions = DefaultAutoSweepTimingOptions) {
+    if (AutoSweepInfo.autoSweepEnabled) {
+        let idleTime = 0;
+
+        if (lastWasNewGameState() && withAutoSolve) {
+            AutoSweepInfo.lastRestState = null;
+            startNewGame();
+        }
+        else {
+            let state = sweep(withAutoSolve);
+            let stateIdleTime = 0;
+
+            if (state === States.solving) {
+                stateIdleTime = timingOptions.solvingIdleTime;
+                AutoSweepInfo.stateCounts[state] += 1;
+            } else {
+                if (isNewGameState(state) && timingOptions.newGameStateIdleTime !== null) {
+                    stateIdleTime = timingOptions.newGameStateIdleTime;
+                }
+                else {
+                    let specificIdleTime = timingOptions.restIdleTimes[state];
+                    stateIdleTime = specificIdleTime !== null ? specificIdleTime : timingOptions.restDefaultIdleTime;
+                }
+
+                if (!AutoSweepInfo.lastRestState || AutoSweepInfo.lastRestState !== state) {
+                    AutoSweepInfo.stateCounts[state] += 1;
+                }
+
+                AutoSweepInfo.lastRestState = state;
+            }
+
+            idleTime = stateIdleTime;
+        }
+
+        if (AutoSweepInfo.autoSweepEnabled) {
+            let timeOutTime = (idleTime + timingOptions.baseIdleTime);
+            setTimeout(() => autoSweep(withAutoSolve, timingOptions), timeOutTime);
+        }
+    }
+}
+
+disableEndOfGamePrompt();
+startAutoSweep();
+setKeyDownHandler();
+
+function setKeyDownHandler() {
+    document.removeEventListener('keydown', keyDownHandler);
+    document.addEventListener('keydown', keyDownHandler);
+}
+
+function keyDownHandler(e) {
+    if (e.code === "KeyA") {
+        sweep();
+    } else if (e.code === "KeyS") {
+        sweep(false);
+    } else if (e.code === "KeyQ") {
+        stopAutoSweep();
+    } else if (e.code === "KeyY") {
+        startAutoSweep();
+    } else if (e.code === "KeyX") {
+        startAutoSweep(false);
+    }
+}
 
 function startNewGame() {
     simulate(document.getElementById('face'), "mousedown");
     simulate(document.getElementById('face'), "mouseup");
 }
 
-function sweep(autoSolve) {
+function sweep(withAutoSolve = true) {
 
     return (function main() {
-        let result = createFieldResult();
-        let field = result.field;
+        let field = initializeField();
+        let resultState = null;
+
+        setNeighborsInfo(field);
+
+        if (checkForStart(field)) {
+            resultState = States.start;
+            console.log("[s]", resultState);
+
+            if (withAutoSolve) {
+                simulate(field[Math.round(field.length / 2)][Math.round(field[0].length / 2)].div, "mouseup");
+                console.log("[sr] Ready for new game");
+            }
+        } else if (checkForSolved(field)) {
+            resultState = States.solved;
+            console.log("[e]", resultState);
+
+            if (withAutoSolve) {
+                console.log("[er] Ready for new game");
+            }
+        } else if (checkForBombDeath()) {
+            console.log("[x] Bomb death");
+
+            if (withAutoSolve) {
+                console.log("[xr] Ready for new game");
+            }
+
+            resultState = States.death;
+        } else {
+            resultState = States.solving;
+            let solveTrivialFound = solveTrivial(field);
+
+            if (solveTrivialFound) {
+                console.log("[0] Trivial");
+            } else {
+                let assumeFlagsFound = assumeFlags(field);
+
+                if (assumeFlagsFound) {
+                    console.log("[1] Assume flags");
+                } else {
+                    let assumeFlagPermutationsFound = assumeFlagPermutations(field);
+    
+                    if (assumeFlagPermutationsFound) {
+                        console.log("[2] Assume flag permutations for digits");
+                    } else {
+                        let allPermutationsResultInfo = assumeAllPermutations(field);
+    
+                        if (allPermutationsResultInfo.certain) {
+                            console.log("[3] Assume all permutations");
+                            allPermutationsResultInfo.messages.forEach(c => console.log("-> [3]", c));
+                        } else if (!withAutoSolve) {
+                            console.log("[-] Stuck");
+                            resultState = States.stuck;
+                        } else {
+                            console.log("[3g] Assume all permutations guessing");
+                            allPermutationsResultInfo.messages.forEach(c => console.log("-> [3g]", c));
+                        }
+                    }
+                }
+            }
+        }
+
+        return resultState;
+    })();
+
+    function solveTrivial(field) {
+        let progressFound = false;
+
+        setTrivialFlags(field);
+        let setClicksFound = setTrivialClicks(field);
+
+        if (setClicksFound) {
+            progressFound = true;
+        }
 
         processFlags(field);
         processClicks(field);
+        return progressFound;
+    }
 
-        if (isBombDeath()) {
-            console.log("[x] Bomb death");
-
-            if (autoSolve) {
-                console.log("[xr] Start new game");
-                //startNewGame();
-            }
-
-            return "death";
-        }
-
-        if (result.state === "start" || result.state === "finish") {
-            console.log("[...]", result.state);
-
-            if (autoSolve) {
-                if (result.state === "start") {
-                    simulate(field[Math.round(field.length / 2)][Math.round(field[0].length / 2)].div, "mouseup");
-                } else {
-                    console.log("[...r] Start new game");
-                    //startNewGame();
-                }
-            }
-
-            return result.state;
-        }
-
-        if (result.state === "clickChanged") {
-            console.log("[0] Trivial");
-        }
-        else {
-            let assumeChanged = assumeFlags(field);
-
-            if (assumeChanged) {
-                console.log("[1] Assume flags");
-            } else {
-                let assumeFlagPermutationsChanged = assumeFlagPermutations(field);
-
-                if (assumeFlagPermutationsChanged) {
-                    console.log("[2] Assume flag permutations for digits");
-                } else {
-                    let resultInfo = assumeAllPermutations(field);
-
-                    if (resultInfo.certain) {
-                        console.log("[3] Assume all permutations");
-                    }
-
-                    resultInfo.messages.forEach(c => console.log("[3m]", c));
-                }
-            }
-        }
-
-        return "";
-    })();
-
-    function isBombDeath() {
+    function checkForBombDeath() {
         return document.getElementsByClassName('square bombdeath').length > 0;
     }
 
@@ -255,7 +351,7 @@ function sweep(autoSolve) {
                         divProb.candidate.isFlagged = true;
 
                         processFlags(field);
-                        let bombsChanged = setClicks(field);
+                        let bombsChanged = setTrivialClicks(field);
 
                         if (bombsChanged) {
                             processClicks(field);
@@ -267,7 +363,7 @@ function sweep(autoSolve) {
                 if (flagsFound) {
                     resultInfo.certain = true;
                     resultInfo.messages.push("Flag Changed found");
-                } else if (autoSolve) {
+                } else if (withAutoSolve) {
                     // Uncertain territory (decision not perfect)
                     // For now, just pick lowest one
 
@@ -373,31 +469,6 @@ function sweep(autoSolve) {
         return flagsAmount;
     }
 
-    function createFieldResult() {
-        let field = initializeField();
-        let resultState = "";
-
-        setNeighborsInfo(field);
-
-        if (checkForStart(field)) {
-            resultState = "start";
-        } else if (checkForFinish(field)) {
-            resultState = "finish";
-        } else {
-            setFlags(field);
-            let clickChanged = setClicks(field);
-
-            if (clickChanged) {
-                resultState = "clickChanged";
-            }
-        }
-
-        return {
-            field: field,
-            state: resultState
-        };
-    }
-
     function checkForStart(field) {
         let isStart = true;
 
@@ -410,7 +481,7 @@ function sweep(autoSolve) {
         return isStart;
     }
 
-    function checkForFinish(field) {
+    function checkForSolved(field) {
         let isFinish = true;
 
         applyToCells(field, cell => {
@@ -523,7 +594,7 @@ function sweep(autoSolve) {
                     foundBombs.forEach(bombCell => {
                         originalField[bombCell.y][bombCell.x].isFlagged = true;
                         processFlags(originalField);
-                        let bombsChanged = setClicks(originalField);
+                        let bombsChanged = setTrivialClicks(originalField);
 
                         if (bombsChanged) {
                             processClicks(originalField);
@@ -549,7 +620,7 @@ function sweep(autoSolve) {
                 let assumeField = createLightCopy(originalField);
 
                 assumeField[assumeFlagCell.y][assumeFlagCell.x].isFlagged = true;
-                let clickChanged = setClicks(assumeField);
+                let clickChanged = setTrivialClicks(assumeField);
 
                 if (clickChanged) {
                     applyToCells(assumeField, cell => {
@@ -592,7 +663,7 @@ function sweep(autoSolve) {
         });
     }
 
-    function setClicks(field) {
+    function setTrivialClicks(field) {
         let somethingChanged = false;
 
         applyToCells(field, cell => {
@@ -629,7 +700,7 @@ function sweep(autoSolve) {
         });
     }
 
-    function setFlags(field) {
+    function setTrivialFlags(field) {
         applyToCells(field, cell => {
             if (cell.isDigit && cell.unknownNeighbors === cell.value) {
                 applyToNeighbors(field, cell, nCell => {
