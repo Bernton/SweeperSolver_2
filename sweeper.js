@@ -165,9 +165,9 @@ function sweep(withAutoSolve = true, doLog = true, maxAllowedCandidates = 20) {
         let newBombsFound = false;
 
         do {
-        if (determineTrivial(field)) {
-            return onStandardSolving("[0] Trivial");
-        }
+            if (determineTrivial(field)) {
+                return onStandardSolving("[0] Trivial");
+            }
 
             if (assumeFlags(field)) {
                 return onStandardSolving("[1] Assume flags");
@@ -194,7 +194,7 @@ function sweep(withAutoSolve = true, doLog = true, maxAllowedCandidates = 20) {
         }
 
         if (!withAutoSolve) {
-            return onExhaustiveSearchStuck();
+            return onExhaustiveSearchStuck(info);
         }
 
         return onExhaustiveSearchGuessing(info);
@@ -212,7 +212,8 @@ function sweep(withAutoSolve = true, doLog = true, maxAllowedCandidates = 20) {
         return States.solving;
     }
 
-    function onExhaustiveSearchStuck() {
+    function onExhaustiveSearchStuck(resultInfo) {
+        resultInfo.messages.forEach(c => log("-> [3s] " + c));
         log("[-] Stuck");
         return States.stuck;
     }
@@ -239,7 +240,7 @@ function sweep(withAutoSolve = true, doLog = true, maxAllowedCandidates = 20) {
     }
 
     function onStart(field, withAutoSolve) {
-        log("[s]", States.start);
+        log("[s] " + States.start);
 
         if (withAutoSolve) {
             simulate(field[Math.round(field.length / 2)][Math.round(field[0].length / 2)].div, "mouseup");
@@ -271,15 +272,18 @@ function sweep(withAutoSolve = true, doLog = true, maxAllowedCandidates = 20) {
         return document.getElementsByClassName('square bombdeath').length > 0;
     }
 
-    function getBorderCellIslands(borderCellLists, maxAllowedCandidates) {
+    function getBorderCellIslands(borderCellLists, maxAllowedCandidates, resultInfo) {
         let borderCells = borderCellLists.digitCells.concat(borderCellLists.freeCells);
         let islands = [];
+        let maxReachedAmount = 0;
         islandFound = false;
 
         borderCells.forEach(cell => cell.islandIndex = null);
 
         do {
             let island = [];
+            let maxReachedIncremented = false;
+
             let startCell = borderCells.find(borderCell => borderCell.islandIndex === null);
 
             let index = islands.length;
@@ -310,11 +314,18 @@ function sweep(withAutoSolve = true, doLog = true, maxAllowedCandidates = 20) {
                         cell.neighbors.forEach(neighbor => {
                             addToIsland(neighbor, index);
                         });
+                    } else if (!maxReachedIncremented) {
+                        maxReachedAmount += 1;
+                        maxReachedIncremented = true;
                     }
                 }
             }
 
         } while (islandFound);
+
+        if (maxReachedAmount > 0) {
+            resultInfo.messages.push("Amount of max reached is " + maxReachedAmount);
+        }
 
         islands.forEach(island => {
             island.forEach(freeCell => {
@@ -350,8 +361,10 @@ function sweep(withAutoSolve = true, doLog = true, maxAllowedCandidates = 20) {
 
         const unflaggedBombsAmount = getUnflaggedBombsAmount(field);
 
+        resultInfo.messages.push("Unflagged bombs amount: " + unflaggedBombsAmount);
+
         let allBorderCells = getBorderCells(field);
-        let borderCellIslands = getBorderCellIslands(allBorderCells, maxAllowedCandidates);
+        let borderCellIslands = getBorderCellIslands(allBorderCells, maxAllowedCandidates, resultInfo);
         let islandResults = [];
 
         borderCellIslands.forEach(borderCells => {
@@ -476,9 +489,10 @@ function sweep(withAutoSolve = true, doLog = true, maxAllowedCandidates = 20) {
                         resultInfo.clickableFound = true;
                         resultInfo.resultIsCertain = true;
                         resultInfo.messages.push("Flag Changed found");
-                    } else if (withAutoSolve) {
+                    } else {
                         // Uncertain territory (decision not perfect)
                         // For now, just pick lowest one
+                        islandResult.resultIsCertain = false;
 
                         let lowestDivProb = null;
 
@@ -489,11 +503,17 @@ function sweep(withAutoSolve = true, doLog = true, maxAllowedCandidates = 20) {
                         });
 
                         islandResult.bestToClick = lowestDivProb;
-                        islandResult.resultIsCertain = false;
-                        islandResult.messages.push("Click lowest probability cell (" + lowestDivProb.percentage + ")");
-                    } else {
-                        islandResult.resultIsCertain = false;
-                        islandResult.messages.push("No certain cell found");
+
+                        if (withAutoSolve) {
+                            islandResult.messages.push("Click lowest probability cell (" + lowestDivProb.percentage + ")");
+                        } else {
+                            islandResult.messages.push("No certain cell found, best would be "
+                                + lowestDivProb.percentage
+                                + " (" + (lowestDivProb.candidate.y + 1)
+                                + "_"
+                                + (lowestDivProb.candidate.x + 1)
+                                + ")");
+                        }
                     }
                 }
             }
@@ -503,14 +523,18 @@ function sweep(withAutoSolve = true, doLog = true, maxAllowedCandidates = 20) {
             let bestResult = null;
 
             islandResults.forEach(islandResult => {
-                if (!bestResult || islandResult.bestToClick.fraction < bestResult.bestToClick.fraction) {
+                if (!bestResult || (islandResult.bestToClick && islandResult.bestToClick.fraction < bestResult.bestToClick.fraction)) {
                     bestResult = islandResult;
                 }
             });
 
             if (bestResult && bestResult.bestToClick) {
-                simulate(bestResult.bestToClick.div, "mouseup");
-                resultInfo.messages = bestResult.messages;
+
+                if (withAutoSolve) {
+                    simulate(bestResult.bestToClick.div, "mouseup");
+                }
+
+                resultInfo.messages = resultInfo.messages.concat(bestResult.messages);
             }
         }
 
