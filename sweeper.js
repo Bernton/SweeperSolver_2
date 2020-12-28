@@ -536,7 +536,7 @@ function sweep(withAutoSolve = true, doLog = true, maxAllowedCandidates = 20) {
                     simulate(bestResult.bestToClick.div, "mouseup");
                 } else {
                     resultInfo.messages.push("Candidates with probability of being a bomb:");
-                    
+
                     let allDivProbs = [];
 
                     islandResults.forEach(islandResult => {
@@ -547,8 +547,22 @@ function sweep(withAutoSolve = true, doLog = true, maxAllowedCandidates = 20) {
 
                     allDivProbs = allDivProbs.sort((a, b) => a.fraction - b.fraction);
 
+                    let number = 1;
+                    let placing = 1;
+                    let lastDivProb = null;
+
                     allDivProbs.forEach(divProb => {
-                        resultInfo.messages.push(formatDivProbCoords(divProb) + ": " + divProb.percentage);
+                        if (lastDivProb && divProb.fraction > lastDivProb.fraction) {
+                            placing = number;
+                        }
+
+                        divProb.placing = placing;
+                        lastDivProb = divProb;
+                        number += 1;
+                    });
+
+                    allDivProbs.forEach(divProb => {
+                        resultInfo.messages.push("#" + divProb.placing + " " + formatDivProbCoords(divProb) + ": " + divProb.percentage);
                         resultInfo.messages.push(divProb.div);
                     });
                 }
