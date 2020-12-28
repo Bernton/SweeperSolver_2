@@ -328,7 +328,8 @@ function sweep(withAutoSolve = true, doLog = true, maxAllowedCandidates = 20) {
         } while (islandFound);
 
         if (maxReachedAmount > 0) {
-            resultInfo.messages.push("Amount of max reached is " + maxReachedAmount);
+            let times = (maxReachedAmount > 1) ? "times" : "time";
+            resultInfo.messages.push("Warning: Max reached " + maxReachedAmount + " " + times + ", probabilities not perfect");
         }
 
         islands.forEach(island => {
@@ -511,10 +512,7 @@ function sweep(withAutoSolve = true, doLog = true, maxAllowedCandidates = 20) {
                         if (withAutoSolve) {
                             islandResult.messages.push("Reveal lowest probability cell (" + lowestDivProb.percentage + ")");
                         } else {
-                            let startText = "No certain cell found, best would be ";
-                            let message = startText + lowestDivProb.percentage + " " + formatDivProbCoords(lowestDivProb);
-                            islandResult.messages.push(message);
-
+                            islandResult.messages.push("No certain cell found");
                             islandResult.divProbs = divProbs;
                         }
                     }
@@ -537,7 +535,8 @@ function sweep(withAutoSolve = true, doLog = true, maxAllowedCandidates = 20) {
                 if (withAutoSolve) {
                     simulate(bestResult.bestToClick.div, "mouseup");
                 } else {
-
+                    resultInfo.messages.push("Candidates with probability of being a bomb:");
+                    
                     let allDivProbs = [];
 
                     islandResults.forEach(islandResult => {
@@ -549,7 +548,7 @@ function sweep(withAutoSolve = true, doLog = true, maxAllowedCandidates = 20) {
                     allDivProbs = allDivProbs.sort((a, b) => a.fraction - b.fraction);
 
                     allDivProbs.forEach(divProb => {
-                        resultInfo.messages.push(formatDivProbCoords(divProb) + " " + divProb.percentage);
+                        resultInfo.messages.push(formatDivProbCoords(divProb) + ": " + divProb.percentage);
                         resultInfo.messages.push(divProb.div);
                     });
                 }
