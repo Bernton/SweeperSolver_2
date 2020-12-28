@@ -1,4 +1,4 @@
-let States = Object.freeze({
+let SweepStates = Object.freeze({
     start: "start",
     solving: "solving",
     stuck: "stuck",
@@ -18,7 +18,7 @@ let AutoSweepConfig = {
     restIdleTimes: { start: null, stuck: null, solved: null, death: null }
 };
 
-let AutoSweepResults = {
+let AutoSweepStats = {
     stateCounts: {
         start: 0,
         solving: 0,
@@ -28,23 +28,44 @@ let AutoSweepResults = {
     }
 }
 
-function formatLogAutoSweepInfo() {
-    let solved = AutoSweepResults.stateCounts[States.solved];
-    let death = AutoSweepResults.stateCounts[States.death];
-    let winPercentage = (solved / (solved + death) * 100);
-    console.log("Solved: " + (winPercentage.toFixed(2)) + "% " + solved + ":" + death);
-}
+disableEndOfGamePrompt();
+setKeyDownHandler();
 
 function disableEndOfGamePrompt() {
     prompt = () => "cancel";
 }
 
-function resetAutoSweepResults() {
-    AutoSweepResults.stateCounts.start = 0;
-    AutoSweepResults.stateCounts.solving = 0;
-    AutoSweepResults.stateCounts.stuck = 0;
-    AutoSweepResults.stateCounts.solved = 0;
-    AutoSweepResults.stateCounts.death = 0;
+function setKeyDownHandler() {
+    if (!window.sweepKeyDown) {
+        sweepKeyDown = keyDownHandler;
+        document.addEventListener('keydown', keyDownHandler);
+    }
+
+    function keyDownHandler(e) {
+        if (e.code === "KeyW") {
+            sweepStep();
+        } else if (e.code === "KeyE") {
+            sweepStepCertain();
+        } else if (e.code === "KeyS") {
+            startAutoSweep();
+        } else if (e.code === "KeyD") {
+            startAutoSweep(false);
+        } else if (e.code === "KeyQ") {
+            stopAutoSweep();
+        } else if (e.code == "KeyI") {
+            formatLogAutoSweepInfo();
+        } else if (e.code =="KeyL") {
+            toggleDoLog();
+        }
+    }
+}
+
+function sweepStep() {
+    sweep(true, AutoSweepConfig.doLog, AutoSweepConfig.maxAllowedCandidates);
+}
+
+function sweepStepCertain() {
+    sweep(false, AutoSweepConfig.doLog, AutoSweepConfig.maxAllowedCandidates);
 }
 
 function startAutoSweep(withAutoSolve = true, timingOptions = AutoSweepConfig) {
@@ -56,12 +77,28 @@ function stopAutoSweep() {
     AutoSweepConfig.autoSweepEnabled = false;
 }
 
-function lastWasNewGameState(config) {
-    return isNewGameState(config.lastRestState);
+function formatLogAutoSweepInfo() {
+    let solved = AutoSweepStats.stateCounts[SweepStates.solved];
+    let death = AutoSweepStats.stateCounts[SweepStates.death];
+    let winPercentage = (solved / (solved + death) * 100);
+    console.log("Solved: " + (winPercentage.toFixed(2)) + "% " + solved + ":" + death);
 }
 
-function isNewGameState(state) {
-    return state === States.solved || state === States.death;
+function toggleDoLog() {
+    AutoSweepConfig.doLog = !AutoSweepConfig.doLog;
+}
+
+function startNewGame() {
+    simulate(document.getElementById('face'), "mousedown");
+    simulate(document.getElementById('face'), "mouseup");
+}
+
+function resetAutoSweepResults() {
+    AutoSweepStats.stateCounts.start = 0;
+    AutoSweepStats.stateCounts.solving = 0;
+    AutoSweepStats.stateCounts.stuck = 0;
+    AutoSweepStats.stateCounts.solved = 0;
+    AutoSweepStats.stateCounts.death = 0;
 }
 
 function autoSweep(withAutoSolve = true, config = AutoSweepConfig) {
@@ -76,9 +113,9 @@ function autoSweep(withAutoSolve = true, config = AutoSweepConfig) {
             let state = sweep(withAutoSolve, config.doLog, config.maxAllowedCandidates);
             let stateIdleTime = 0;
 
-            if (state === States.solving) {
+            if (state === SweepStates.solving) {
                 stateIdleTime = config.solvingIdleTime;
-                AutoSweepResults.stateCounts[state] += 1;
+                AutoSweepStats.stateCounts[state] += 1;
             } else {
                 if (isNewGameState(state) && config.newGameStateIdleTime !== null) {
                     stateIdleTime = config.newGameStateIdleTime;
@@ -89,7 +126,7 @@ function autoSweep(withAutoSolve = true, config = AutoSweepConfig) {
                 }
 
                 if (!config.lastRestState || config.lastRestState !== state) {
-                    AutoSweepResults.stateCounts[state] += 1;
+                    AutoSweepStats.stateCounts[state] += 1;
                 }
 
                 config.lastRestState = state;
@@ -103,33 +140,14 @@ function autoSweep(withAutoSolve = true, config = AutoSweepConfig) {
             setTimeout(() => autoSweep(withAutoSolve, config), timeOutTime);
         }
     }
-}
 
-disableEndOfGamePrompt();
-setKeyDownHandler();
-
-function setKeyDownHandler() {
-    document.removeEventListener('keydown', keyDownHandler);
-    document.addEventListener('keydown', keyDownHandler);
-}
-
-function keyDownHandler(e) {
-    if (e.code === "KeyA") {
-        sweep(true, AutoSweepConfig.doLog, AutoSweepConfig.maxAllowedCandidates);
-    } else if (e.code === "KeyS") {
-        sweep(false, AutoSweepConfig.doLog, AutoSweepConfig.maxAllowedCandidates);
-    } else if (e.code === "KeyQ") {
-        stopAutoSweep();
-    } else if (e.code === "KeyY") {
-        startAutoSweep();
-    } else if (e.code === "KeyX") {
-        startAutoSweep(false);
+    function isNewGameState(state) {
+        return state === SweepStates.solved || state === SweepStates.death;
     }
-}
 
-function startNewGame() {
-    simulate(document.getElementById('face'), "mousedown");
-    simulate(document.getElementById('face'), "mouseup");
+    function lastWasNewGameState(config) {
+        return isNewGameState(config.lastRestState);
+    }
 }
 
 function sweep(withAutoSolve = true, doLog = true, maxAllowedCandidates = 20) {
@@ -200,24 +218,24 @@ function sweep(withAutoSolve = true, doLog = true, maxAllowedCandidates = 20) {
     function onExhaustiveSearchGuessing(resultInfo) {
         log("[3g] Assume all permutations guessing");
         resultInfo.messages.forEach(c => log("-> [3g] " + c));
-        return States.solving;
+        return SweepStates.solving;
     }
 
     function onExhaustiveSearchStuck(resultInfo) {
-        log("[3s] Stuck");
+        log("[3s] Stuck, nothing certain found");
         resultInfo.messages.forEach(c => log("-> [3s] " + c));
-        return States.stuck;
+        return SweepStates.stuck;
     }
 
     function onExhaustiveSearchCertain(resultInfo) {
         log("[3] Assume all permutations");
         resultInfo.messages.forEach(c => log("-> [3] " + c));
-        return States.solving;
+        return SweepStates.solving;
     }
 
     function onStandardSolving(message) {
         log(message);
-        return States.solving;
+        return SweepStates.solving;
     }
 
     function onBombDeath(withAutoSolve) {
@@ -227,28 +245,28 @@ function sweep(withAutoSolve = true, doLog = true, maxAllowedCandidates = 20) {
             log("[xr] Ready for new game");
         }
 
-        return States.death;
+        return SweepStates.death;
     }
 
     function onStart(field, withAutoSolve) {
-        log("[s] " + States.start);
+        log("[s] " + SweepStates.start);
 
         if (withAutoSolve) {
             simulate(field[Math.round(field.length / 2)][Math.round(field[0].length / 2)].div, "mouseup");
             log("[sr] Ready for new game");
         }
 
-        return States.start;
+        return SweepStates.start;
     }
 
     function onSolved(withAutoSolve) {
-        log("[e]", States.solved);
+        log("[e]", SweepStates.solved);
 
         if (withAutoSolve) {
             log("[er] Ready for new game");
         }
 
-        return States.solved;
+        return SweepStates.solved;
     }
 
     function determineTrivial(field) {
