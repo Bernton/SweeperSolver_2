@@ -1,4 +1,4 @@
-const States = Object.freeze({
+let States = Object.freeze({
     start: "start",
     solving: "solving",
     stuck: "stuck",
@@ -6,24 +6,19 @@ const States = Object.freeze({
     death: "death",
 });
 
-const DefaultAutoSweepTimingOptions = {
+let AutoSweepConfig = {
+    doLog: true,
+    autoSweepEnabled: false,
+    maxAllowedCandidates: 20,
+    lastRestState: null,
     baseIdleTime: 0,
     solvingIdleTime: 0,
     newGameStateIdleTime: 0,
     restDefaultIdleTime: 0,
-    restIdleTimes: {
-        start: null,
-        stuck: null,
-        solved: null,
-        death: null
-    }
+    restIdleTimes: { start: null, stuck: null, solved: null, death: null }
 };
 
-const AutoSweepInfo = {
-    maxAllowedCandidates: 20,
-    doLog: true,
-    autoSweepEnabled: false,
-    lastRestState: null,
+let AutoSweepResults = {
     stateCounts: {
         start: 0,
         solving: 0,
@@ -34,8 +29,8 @@ const AutoSweepInfo = {
 }
 
 function formatLogAutoSweepInfo() {
-    let solved = AutoSweepInfo.stateCounts[States.solved];
-    let death = AutoSweepInfo.stateCounts[States.death];
+    let solved = AutoSweepResults.stateCounts[States.solved];
+    let death = AutoSweepResults.stateCounts[States.death];
     let winPercentage = (solved / (solved + death) * 100);
     console.log("Solved: " + (winPercentage.toFixed(2)) + "% " + solved + ":" + death);
 }
@@ -44,72 +39,68 @@ function disableEndOfGamePrompt() {
     prompt = () => "cancel";
 }
 
-function resetAutoSweepInfo() {
-    AutoSweepInfo.maxAllowedCandidates = 20;
-    AutoSweepInfo.doLog = true;
-    AutoSweepInfo.autoSweepEnabled = false;
-    AutoSweepInfo.lastRestState = null;
-    AutoSweepInfo.stateCounts.start = 0;
-    AutoSweepInfo.stateCounts.solving = 0;
-    AutoSweepInfo.stateCounts.stuck = 0;
-    AutoSweepInfo.stateCounts.solved = 0;
-    AutoSweepInfo.stateCounts.death = 0;
+function resetAutoSweepResults() {
+    AutoSweepResults.stateCounts.start = 0;
+    AutoSweepResults.stateCounts.solving = 0;
+    AutoSweepResults.stateCounts.stuck = 0;
+    AutoSweepResults.stateCounts.solved = 0;
+    AutoSweepResults.stateCounts.death = 0;
 }
 
-function startAutoSweep(withAutoSolve = true, timingOptions = DefaultAutoSweepTimingOptions) {
-    AutoSweepInfo.autoSweepEnabled = true;
+function startAutoSweep(withAutoSolve = true, timingOptions = AutoSweepConfig) {
+    AutoSweepConfig.autoSweepEnabled = true;
     setTimeout(() => autoSweep(withAutoSolve, timingOptions), 0);
 }
 
 function stopAutoSweep() {
-    AutoSweepInfo.autoSweepEnabled = false;
+    AutoSweepConfig.autoSweepEnabled = false;
 }
 
-function lastWasNewGameState() {
-    return isNewGameState(AutoSweepInfo.lastRestState);
+function lastWasNewGameState(config) {
+    return isNewGameState(config.lastRestState);
 }
 
 function isNewGameState(state) {
     return state === States.solved || state === States.death;
 }
 
-function autoSweep(withAutoSolve = true, timingOptions = DefaultAutoSweepTimingOptions) {
-    if (AutoSweepInfo.autoSweepEnabled) {
+function autoSweep(withAutoSolve = true, config = AutoSweepConfig) {
+    if (AutoSweepConfig.autoSweepEnabled) {
         let idleTime = 0;
 
-        if (lastWasNewGameState() && withAutoSolve) {
-            AutoSweepInfo.lastRestState = null;
+        if (lastWasNewGameState(config) && withAutoSolve) {
+            config.lastRestState = null;
             startNewGame();
         }
         else {
-            let state = sweep(withAutoSolve, AutoSweepInfo.doLog, AutoSweepInfo.maxAllowedCandidates);
+            let state = sweep(withAutoSolve, config.doLog, config.maxAllowedCandidates);
             let stateIdleTime = 0;
 
             if (state === States.solving) {
-                stateIdleTime = timingOptions.solvingIdleTime;
-                AutoSweepInfo.stateCounts[state] += 1;
+                stateIdleTime = config.solvingIdleTime;
+                AutoSweepResults.stateCounts[state] += 1;
             } else {
-                if (isNewGameState(state) && timingOptions.newGameStateIdleTime !== null) {
-                    stateIdleTime = timingOptions.newGameStateIdleTime;
+                if (isNewGameState(state) && config.newGameStateIdleTime !== null) {
+                    stateIdleTime = config.newGameStateIdleTime;
                 }
                 else {
-                    let specificIdleTime = timingOptions.restIdleTimes[state];
-                    stateIdleTime = specificIdleTime !== null ? specificIdleTime : timingOptions.restDefaultIdleTime;
+                    let specificIdleTime = config.restIdleTimes[state];
+                    stateIdleTime = specificIdleTime !== null ? specificIdleTime : config.restDefaultIdleTime;
                 }
 
-                if (!AutoSweepInfo.lastRestState || AutoSweepInfo.lastRestState !== state) {
-                    AutoSweepInfo.stateCounts[state] += 1;
+                if (!config.lastRestState || config.lastRestState !== state) {
+                    AutoSweepResults.stateCounts[state] += 1;
                 }
 
-                AutoSweepInfo.lastRestState = state;
+                config.lastRestState = state;
             }
 
             idleTime = stateIdleTime;
         }
 
-        if (AutoSweepInfo.autoSweepEnabled) {
-            let timeOutTime = (idleTime + timingOptions.baseIdleTime);
-            setTimeout(() => autoSweep(withAutoSolve, timingOptions), timeOutTime);
+        if (config.autoSweepEnabled) {
+            let timeOutTime = (idleTime + config.baseIdleTime);
+            setTimeout(() => autoSweep(withAutoSolve, config), timeOutTime);
         }
     }
 }
@@ -124,9 +115,9 @@ function setKeyDownHandler() {
 
 function keyDownHandler(e) {
     if (e.code === "KeyA") {
-        sweep(true, AutoSweepInfo.doLog, AutoSweepInfo.maxAllowedCandidates);
+        sweep(true, AutoSweepConfig.doLog, AutoSweepConfig.maxAllowedCandidates);
     } else if (e.code === "KeyS") {
-        sweep(false, AutoSweepInfo.doLog, AutoSweepInfo.maxAllowedCandidates);
+        sweep(false, AutoSweepConfig.doLog, AutoSweepConfig.maxAllowedCandidates);
     } else if (e.code === "KeyQ") {
         stopAutoSweep();
     } else if (e.code === "KeyY") {
@@ -213,8 +204,8 @@ function sweep(withAutoSolve = true, doLog = true, maxAllowedCandidates = 20) {
     }
 
     function onExhaustiveSearchStuck(resultInfo) {
+        log("[3s] Stuck");
         resultInfo.messages.forEach(c => log("-> [3s] " + c));
-        log("[-] Stuck");
         return States.stuck;
     }
 
