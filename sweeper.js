@@ -26,7 +26,7 @@ let AutoSweepStats = {
         solved: 0,
         death: 0
     }
-}
+};
 
 disableEndOfGamePrompt();
 setKeyDownHandler();
@@ -51,9 +51,11 @@ function setKeyDownHandler() {
             startAutoSweep();
         } else if (e.code === "KeyD") {
             stopAutoSweep();
-        } else if (e.code == "KeyI") {
+        } else if (e.code === "KeyI") {
             formatLogAutoSweepInfo();
-        } else if (e.code == "KeyL") {
+        } else if (e.code === "KeyK") {
+            resetAutoSweepResults();
+        } else if (e.code === "KeyL") {
             toggleDoLog();
         }
     }
@@ -224,7 +226,7 @@ function sweep(withAutoSolve = true, doLog = true, maxAllowedCandidates = 20) {
 
     function onExhaustiveSearch(resultInfo, message, prefix, resultState) {
         log(prefix, message);
-        resultInfo.messages.forEach(c => { log("->", prefix, c) });
+        resultInfo.messages.forEach(c => { log("->", prefix, c); });
         return resultState;
     }
 
@@ -294,7 +296,27 @@ function sweep(withAutoSolve = true, doLog = true, maxAllowedCandidates = 20) {
             let freeCellsMarked = 0;
 
             if (startCell) {
-                addToIsland(startCell, islands.length);
+                let addToIsland = cell => {
+                    if (cell.islandIndex === null) {
+                        cell.islandIndex = index;
+    
+                        if (!cell.isDigit) {
+                            freeCellsMarked += 1;
+                        }
+    
+                        if (freeCellsMarked <= maxAllowedCandidates) {
+                            island.push(cell);
+                            cell.neighbors.forEach(neighbor => {
+                                addToIsland(neighbor, index);
+                            });
+                        } else if (!maxReachedIncremented) {
+                            maxReachedAmount += 1;
+                            maxReachedIncremented = true;
+                        }
+                    }
+                };
+
+                addToIsland(startCell);
                 island = island.filter(cell => !cell.isDigit);
 
                 if (island.length > 0) {
@@ -303,26 +325,6 @@ function sweep(withAutoSolve = true, doLog = true, maxAllowedCandidates = 20) {
                 islandFound = true;
             } else {
                 islandFound = false;
-            }
-
-            function addToIsland(cell) {
-                if (cell.islandIndex === null) {
-                    cell.islandIndex = index;
-
-                    if (!cell.isDigit) {
-                        freeCellsMarked += 1;
-                    }
-
-                    if (freeCellsMarked <= maxAllowedCandidates) {
-                        island.push(cell);
-                        cell.neighbors.forEach(neighbor => {
-                            addToIsland(neighbor, index);
-                        });
-                    } else if (!maxReachedIncremented) {
-                        maxReachedAmount += 1;
-                        maxReachedIncremented = true;
-                    }
-                }
             }
 
         } while (islandFound);
@@ -449,7 +451,7 @@ function sweep(withAutoSolve = true, doLog = true, maxAllowedCandidates = 20) {
                 }
 
                 let fractionOfOnes = occurencesOfOnes.map(c => c / validPermutations.length);
-                let percentOfOnes = occurencesOfOnes.map((c, i) => (c / validPermutations.length * 100.0).toFixed(1) + "%");
+                let percentOfOnes = occurencesOfOnes.map(c => (c / validPermutations.length * 100.0).toFixed(1) + "%");
                 let divProbs = [];
 
                 candidates.forEach((candidate, i) => {
@@ -542,7 +544,7 @@ function sweep(withAutoSolve = true, doLog = true, maxAllowedCandidates = 20) {
                     islandResults.forEach(islandResult => {
                         islandResult.divProbs.forEach(divProb => {
                             allDivProbs.push(divProb);
-                        })
+                        });
                     });
 
                     allDivProbs = allDivProbs.sort((a, b) => a.fraction - b.fraction);
@@ -842,40 +844,6 @@ function sweep(withAutoSolve = true, doLog = true, maxAllowedCandidates = 20) {
         return clicksFound;
     }
 
-    function processClicks(field) {
-        applyToCells(field, cell => {
-            if (cell.isClickable) {
-                simulate(cell.div, 'mouseup');
-            }
-        });
-    }
-
-    function determineTrivialClicksNoClick(field) {
-        let trivialClicksFound = false;
-
-        applyToCells(field, cell => {
-            if (cell.isDigit) {
-                cell.flaggedNeighbors = 0;
-
-                cell.neighbors.forEach(neighbor => {
-                    if (neighbor.isFlagged) {
-                        cell.flaggedNeighbors += 1;
-                    }
-                });
-
-                if (cell.flaggedNeighbors === cell.value) {
-                    cell.neighbors.forEach(neighbor => {
-                        if (neighbor.isHidden && !neighbor.isFlagged) {
-                            trivialClicksFound = true;
-                        }
-                    })
-                }
-            }
-        });
-
-        return trivialClicksFound;
-    }
-
     function determineTrivialClicks(field) {
         let trivialClicksFound = false;
 
@@ -895,7 +863,7 @@ function sweep(withAutoSolve = true, doLog = true, maxAllowedCandidates = 20) {
                             simulate(neighbor.div, "mouseup");
                             trivialClicksFound = true;
                         }
-                    })
+                    });
                 }
             }
         });
@@ -1009,8 +977,9 @@ function sweep(withAutoSolve = true, doLog = true, maxAllowedCandidates = 20) {
         for (let yOffset = -1; yOffset <= 1; yOffset++) {
             for (let xOffset = -1; xOffset <= 1; xOffset++) {
 
-                if (yOffset == 0 && xOffset == 0)
+                if (yOffset === 0 && xOffset === 0) {
                     continue;
+                }
 
                 let y = cell.y + xOffset;
                 let x = cell.x + yOffset;
@@ -1056,12 +1025,13 @@ function simulate(element, eventName) {
         if (eventMatchers[name].test(eventName)) { eventType = name; break; }
     }
 
-    if (!eventType)
+    if (!eventType) {
         throw new SyntaxError('Only HTMLEvents and MouseEvents interfaces are supported');
+    }
 
     if (document.createEvent) {
         oEvent = document.createEvent(eventType);
-        if (eventType == 'HTMLEvents') {
+        if (eventType === 'HTMLEvents') {
             oEvent.initEvent(eventName, options.bubbles, options.cancelable);
         }
         else {
@@ -1081,8 +1051,10 @@ function simulate(element, eventName) {
     return element;
 
     function extend(destination, source) {
-        for (let property in source)
+        for (let property in source) {
             destination[property] = source[property];
+        }
+
         return destination;
     }
 }
