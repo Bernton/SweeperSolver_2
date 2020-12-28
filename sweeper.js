@@ -31,6 +31,7 @@ let AutoSweepStats = {
 disableEndOfGamePrompt();
 setKeyDownHandler();
 
+
 function disableEndOfGamePrompt() {
     prompt = () => "cancel";
 }
@@ -49,12 +50,10 @@ function setKeyDownHandler() {
         } else if (e.code === "KeyS") {
             startAutoSweep();
         } else if (e.code === "KeyD") {
-            startAutoSweep(false);
-        } else if (e.code === "KeyQ") {
             stopAutoSweep();
         } else if (e.code == "KeyI") {
             formatLogAutoSweepInfo();
-        } else if (e.code =="KeyL") {
+        } else if (e.code == "KeyL") {
             toggleDoLog();
         }
     }
@@ -153,7 +152,6 @@ function autoSweep(withAutoSolve = true, config = AutoSweepConfig) {
 function sweep(withAutoSolve = true, doLog = true, maxAllowedCandidates = 20) {
 
     return (function main() {
-        maxAllowedCandidates = (maxAllowedCandidates <= 30) ? maxAllowedCandidates : 30;
 
         if (checkForBombDeath()) {
             return onBombDeath(withAutoSolve);
@@ -182,21 +180,15 @@ function sweep(withAutoSolve = true, doLog = true, maxAllowedCandidates = 20) {
                 return onStandardSolving("[1] Assume flags");
             }
 
-            if (assumeDigitsFlagPermutations(field)) {
-                newBombsFound = true;
+            newBombsFound = assumeDigitsFlagPermutations(field);
+
+            if (newBombsFound) {
                 onStandardSolving("[2] Assume digits flag permutations");
             }
-            else {
-                newBombsFound = false;
-            }
+
         } while (newBombsFound);
 
-        determineTrivialFlags(field);
-        processFlags(field);
-
-        determineTrivialClicksNoClick(field);
-
-        let info = exhaustiveSearch(field, maxAllowedCandidates);
+        let info = exhaustiveSearch(field, Math.min(maxAllowedCandidates, 30));
 
         if (info.resultIsCertain) {
             return onExhaustiveSearchCertain(info);
@@ -209,28 +201,31 @@ function sweep(withAutoSolve = true, doLog = true, maxAllowedCandidates = 20) {
         return onExhaustiveSearchGuessing(info);
     })();
 
-    function log(content) {
+    function log() {
         if (doLog) {
-            console.log(content);
+            console.log.apply(console, arguments);
         }
     }
 
     function onExhaustiveSearchGuessing(resultInfo) {
-        log("[3g] Assume all permutations guessing");
-        resultInfo.messages.forEach(c => log("-> [3g] " + c));
-        return SweepStates.solving;
+        let message = "Assume all permutations guessing";
+        return onExhaustiveSearch(resultInfo, message, "[3g]", SweepStates.solving);
     }
 
     function onExhaustiveSearchStuck(resultInfo) {
-        log("[3s] Stuck, nothing certain found");
-        resultInfo.messages.forEach(c => log("-> [3s] " + c));
-        return SweepStates.stuck;
+        let message = "Stuck, nothing certain found";
+        return onExhaustiveSearch(resultInfo, message, "[3s]", SweepStates.stuck);
     }
 
     function onExhaustiveSearchCertain(resultInfo) {
-        log("[3] Assume all permutations");
-        resultInfo.messages.forEach(c => log("-> [3] " + c));
-        return SweepStates.solving;
+        let message = "Assume all permutations";
+        return onExhaustiveSearch(resultInfo, message, "[3]", SweepStates.solving);
+    }
+
+    function onExhaustiveSearch(resultInfo, message, prefix, resultState) {
+        log(prefix, message);
+        resultInfo.messages.forEach(c => { log("->", prefix, c) });
+        return resultState;
     }
 
     function onStandardSolving(message) {
@@ -514,14 +509,13 @@ function sweep(withAutoSolve = true, doLog = true, maxAllowedCandidates = 20) {
                         islandResult.bestToClick = lowestDivProb;
 
                         if (withAutoSolve) {
-                            islandResult.messages.push("Click lowest probability cell (" + lowestDivProb.percentage + ")");
+                            islandResult.messages.push("Reveal lowest probability cell (" + lowestDivProb.percentage + ")");
                         } else {
-                            islandResult.messages.push("No certain cell found, best would be "
-                                + lowestDivProb.percentage
-                                + " (" + (lowestDivProb.candidate.y + 1)
-                                + "_"
-                                + (lowestDivProb.candidate.x + 1)
-                                + ")");
+                            let startText = "No certain cell found, best would be ";
+                            let message = startText + lowestDivProb.percentage + " " + formatDivProbCoords(lowestDivProb);
+                            islandResult.messages.push(message);
+
+                            islandResult.divProbs = divProbs;
                         }
                     }
                 }
@@ -538,13 +532,33 @@ function sweep(withAutoSolve = true, doLog = true, maxAllowedCandidates = 20) {
             });
 
             if (bestResult && bestResult.bestToClick) {
+                resultInfo.messages = resultInfo.messages.concat(bestResult.messages);
 
                 if (withAutoSolve) {
                     simulate(bestResult.bestToClick.div, "mouseup");
-                }
+                } else {
 
-                resultInfo.messages = resultInfo.messages.concat(bestResult.messages);
+                    let allDivProbs = [];
+
+                    islandResults.forEach(islandResult => {
+                        islandResult.divProbs.forEach(divProb => {
+                            allDivProbs.push(divProb);
+                        })
+                    });
+
+                    allDivProbs = allDivProbs.sort((a, b) => a.fraction - b.fraction);
+
+                    allDivProbs.forEach(divProb => {
+                        resultInfo.messages.push(formatDivProbCoords(divProb) + " " + divProb.percentage);
+                        resultInfo.messages.push(divProb.div);
+                    });
+                }
             }
+        }
+
+        function formatDivProbCoords(divProb) {
+            let cell = divProb.candidate;
+            return "(" + (cell.y + 1) + "_" + (cell.x + 1) + ")";
         }
 
         return resultInfo;
