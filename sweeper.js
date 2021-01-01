@@ -593,7 +593,7 @@ function sweep(withGuessing = true, doLog = true, maxAllowedUnknowns = 20) {
                 });
 
                 if (lowestDivProb) {
-                    islandResult.messages.push("Reveal lowest probability cell (" + lowestDivProb.percentage + ")");
+                    resultInfo.messages.push("Reveal lowest probability cell (" + lowestDivProb.percentage + ")");
                     revealDiv(lowestDivProb.div);
                 }
             } else {
