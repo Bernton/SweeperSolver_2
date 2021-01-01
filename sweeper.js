@@ -9,7 +9,7 @@ let SweepStates = Object.freeze({
 let AutoSweepConfig = {
     doLog: true,
     autoSweepEnabled: false,
-    maxAllowedCandidates: 50,
+    maxAllowedUnknowns: 50,
     lastRestState: null,
     baseIdleTime: 0,
     solvingIdleTime: 0,
@@ -69,11 +69,11 @@ function setKeyDownHandler() {
 }
 
 function sweepStep() {
-    sweep(true, AutoSweepConfig.doLog, AutoSweepConfig.maxAllowedCandidates);
+    sweep(true, AutoSweepConfig.doLog, AutoSweepConfig.maxAllowedUnknowns);
 }
 
 function sweepStepCertain() {
-    return sweep(false, AutoSweepConfig.doLog, AutoSweepConfig.maxAllowedCandidates);
+    return sweep(false, AutoSweepConfig.doLog, AutoSweepConfig.maxAllowedUnknowns);
 }
 
 function startAutoSweep(withAutoSolve = true, timingOptions = AutoSweepConfig) {
@@ -118,7 +118,7 @@ function autoSweep(withAutoSolve = true, config = AutoSweepConfig) {
             startNewGame();
         }
         else {
-            let state = sweep(withAutoSolve, config.doLog, config.maxAllowedCandidates);
+            let state = sweep(withAutoSolve, config.doLog, config.maxAllowedUnknowns);
             let stateIdleTime = 0;
 
             if (state === SweepStates.solving) {
@@ -158,57 +158,48 @@ function autoSweep(withAutoSolve = true, config = AutoSweepConfig) {
     }
 }
 
-function sweep(withAutoSolve = true, doLog = true, maxAllowedCandidates = 20) {
+function sweep(withGuessing = true, doLog = true, maxAllowedUnknowns = 20) {
 
     return (function main() {
-
-        let field = initializeField();
-        processFlags(field);
-
         if (checkForBombDeath()) {
-            return onBombDeath(withAutoSolve);
+            return onBombDeath();
         }
 
+        let field = initializeField();
+
         if (checkForStart(field)) {
-            return onStart(field, withAutoSolve);
+            return onStart(field);
         }
 
         setCellNeighborInfo(field);
 
         if (checkForSolved(field)) {
-            return onSolved(withAutoSolve);
+            return onSolved();
         }
 
-        let newBombsFound = false;
-
-        do {
-            if (determineTrivial(field)) {
-                return onStandardSolving("[0] Trivial");
-            }
-
-            if (assumeFlags(field)) {
-                return onStandardSolving("[1] Assume flags");
-            }
-
-            newBombsFound = assumeDigitsFlagPermutations(field);
-
-            if (newBombsFound) {
-                onStandardSolving("[2] Assume digits flag permutations");
-            }
-
-        } while (newBombsFound);
-
-        let info = exhaustiveSearch(field, maxAllowedCandidates);
-
-        if (info.resultIsCertain) {
-            return onExhaustiveSearchCertain(info);
+        if (determineTrivialFlags(field) || determineTrivialReveals(field)) {
+            return onStandardSolving("[0] Trivial cases");
         }
 
-        if (!withAutoSolve) {
-            return onExhaustiveSearchStuck(info);
+        if (determineSuffocations(field)) {
+            return onStandardSolving("[1] Suffocations");
         }
 
-        return onExhaustiveSearchGuessing(info);
+        if (checkDigitsFlagCombinations(field)) {
+            onStandardSolving("[2] Check digits flag combinations");
+        }
+
+        let resultInfo = checkAllCombinations(field, maxAllowedUnknowns);
+
+        if (resultInfo.resultIsCertain) {
+            return onCheckAllCombinationsCertain(resultInfo);
+        }
+
+        if (withGuessing) {
+            return onCheckAllCombinationsGuessing(resultInfo);
+        }
+
+        return onCheckAllCombinationsStuck(resultInfo);
     })();
 
     function log() {
@@ -217,22 +208,22 @@ function sweep(withAutoSolve = true, doLog = true, maxAllowedCandidates = 20) {
         }
     }
 
-    function onExhaustiveSearchGuessing(resultInfo) {
-        let message = "Assume all permutations guessing";
-        return onExhaustiveSearch(resultInfo, message, "[3g]", SweepStates.solving);
+    function onCheckAllCombinationsCertain(resultInfo) {
+        let message = "Check all combinations";
+        return onCheckAllCombinations(resultInfo, message, "[3]", SweepStates.solving);
     }
 
-    function onExhaustiveSearchStuck(resultInfo) {
-        let message = "Stuck, nothing certain found";
-        return onExhaustiveSearch(resultInfo, message, "[3s]", SweepStates.stuck);
+    function onCheckAllCombinationsGuessing(resultInfo) {
+        let message = "Check all combinations - guessing";
+        return onCheckAllCombinations(resultInfo, message, "[3g]", SweepStates.solving);
     }
 
-    function onExhaustiveSearchCertain(resultInfo) {
-        let message = "Assume all permutations";
-        return onExhaustiveSearch(resultInfo, message, "[3]", SweepStates.solving);
+    function onCheckAllCombinationsStuck(resultInfo) {
+        let message = "Check all combinations - stuck";
+        return onCheckAllCombinations(resultInfo, message, "[3s]", SweepStates.stuck);
     }
 
-    function onExhaustiveSearch(resultInfo, message, prefix, resultState) {
+    function onCheckAllCombinations(resultInfo, message, prefix, resultState) {
         log(prefix, message);
         resultInfo.messages.forEach(c => { log("->", prefix, c); });
         return resultState;
@@ -243,53 +234,52 @@ function sweep(withAutoSolve = true, doLog = true, maxAllowedCandidates = 20) {
         return SweepStates.solving;
     }
 
-    function onBombDeath(withAutoSolve) {
+    function onBombDeath() {
         log("[x] Bomb death");
-
-        if (withAutoSolve) {
-            log("[xr] Ready for new game");
-        }
-
         return SweepStates.death;
     }
 
-    function onStart(field, withAutoSolve) {
-        log("[s] " + SweepStates.start);
+    function onStart(field) {
+        log("[s]", SweepStates.start);
 
-        if (withAutoSolve) {
-            simulate(field[Math.round(field.length / 2)][Math.round(field[0].length / 2)].div, "mouseup");
+        if (withGuessing) {
+            revealDiv(field[Math.round(field.length / 2)][Math.round(field[0].length / 2)].div);
         }
 
         return SweepStates.start;
     }
 
-    function onSolved(withAutoSolve) {
-        log("[e]", SweepStates.solved);
-
-        if (withAutoSolve) {
-            log("[er] Ready for new game");
-        }
-
+    function onSolved() {
+        log("[o]", SweepStates.solved);
         return SweepStates.solved;
     }
 
-    function determineTrivial(field) {
-        determineTrivialFlags(field);
-        processFlags(field);
+    function determineTrivialReveals(field) {
+        let revealsFound = false;
 
-        let trivialClicksFound = determineTrivialClicks(field);
-        return trivialClicksFound;
+        applyToCells(field, cell => {
+            if (cell.isDigit && cell.flaggedNeighborAmount === cell.value) {
+                cell.neighbors.forEach(neighbor => {
+                    if (neighbor.isUnknown) {
+                        revealDiv(neighbor.div);
+                        revealsFound = true;
+                    }
+                });
+            }
+        });
+
+        return revealsFound;
     }
 
     function checkForBombDeath() {
         return document.getElementsByClassName('square bombdeath').length > 0;
     }
 
-    function getBorderCellIslands(borderCellLists, maxAllowedCandidates, resultInfo) {
-        let borderCells = borderCellLists.digitCells.concat(borderCellLists.freeCells);
+    function getBorderCellIslands(borderCellLists, maxAllowedUnknowns, resultInfo) {
+        let borderCells = borderCellLists.digits.concat(borderCellLists.unknowns);
         let islands = [];
         let maxReachedAmount = 0;
-        let islandFound = false;
+        let newIslandFound = false;
 
         borderCells.forEach(cell => cell.islandIndex = null);
 
@@ -300,18 +290,20 @@ function sweep(withAutoSolve = true, doLog = true, maxAllowedCandidates = 20) {
             let startCell = borderCells.find(borderCell => borderCell.islandIndex === null);
 
             let index = islands.length;
-            let freeCellsMarked = 0;
+            let unknownsMarked = 0;
 
             if (startCell) {
+                newIslandFound = true;
+
                 let addToIsland = cell => {
                     if (cell.islandIndex === null) {
                         cell.islandIndex = index;
 
                         if (!cell.isDigit) {
-                            freeCellsMarked += 1;
+                            unknownsMarked += 1;
                         }
 
-                        if (freeCellsMarked <= maxAllowedCandidates) {
+                        if (unknownsMarked <= maxAllowedUnknowns) {
                             island.push(cell);
                             cell.neighbors.forEach(neighbor => {
                                 addToIsland(neighbor, index);
@@ -329,12 +321,12 @@ function sweep(withAutoSolve = true, doLog = true, maxAllowedCandidates = 20) {
                 if (island.length > 0) {
                     islands.push(island);
                 }
-                islandFound = true;
+
             } else {
-                islandFound = false;
+                newIslandFound = false;
             }
 
-        } while (islandFound);
+        } while (newIslandFound);
 
         if (maxReachedAmount > 0) {
             let times = (maxReachedAmount > 1) ? "times" : "time";
@@ -342,10 +334,10 @@ function sweep(withAutoSolve = true, doLog = true, maxAllowedCandidates = 20) {
         }
 
         islands.forEach(island => {
-            island.forEach(freeCell => {
-                freeCell.neighbors.forEach(freeCellNeighbor => {
-                    if (freeCellNeighbor.isDigit && !island.includes(freeCellNeighbor)) {
-                        island.push(freeCellNeighbor);
+            island.forEach(unknown => {
+                unknown.neighbors.forEach(neighbor => {
+                    if (neighbor.isDigit && !island.includes(neighbor)) {
+                        island.push(neighbor);
                     }
                 });
             });
@@ -355,55 +347,53 @@ function sweep(withAutoSolve = true, doLog = true, maxAllowedCandidates = 20) {
 
         islands.forEach(island => {
             islandBorderCellLists.push({
-                digitCells: island.filter(c => c.isDigit),
-                freeCells: island.filter(c => !c.isDigit)
+                digits: island.filter(c => c.isDigit),
+                unknowns: island.filter(c => !c.isDigit)
             });
         });
 
-        islandBorderCellLists = islandBorderCellLists.sort((a, b) => -(a.digitCells.length - b.digitCells.length));
-        islandBorderCellLists = islandBorderCellLists.sort((a, b) => a.freeCells.length - b.freeCells.length);
+        islandBorderCellLists = islandBorderCellLists.sort((a, b) => -(a.digits.length - b.digits.length));
+        islandBorderCellLists = islandBorderCellLists.sort((a, b) => a.unknowns.length - b.unknowns.length);
         return islandBorderCellLists;
     }
 
-    function getAmountOfFreeNonBorderCells(field) {
-        let amountOfFreeNonBorderCells = 0;
+    function getAmountOfNonBorderUnknowns(field) {
+        let amountOfNonBorderUnknowns = 0;
 
         applyToCells(field, cell => {
-            if (cell.isHidden && !cell.isFlagged && !cell.isBorderCell) {
-                amountOfFreeNonBorderCells += 1;
+            if (cell.isUnknown && !cell.isBorderCell) {
+                amountOfNonBorderUnknowns += 1;
             }
         });
 
-        return amountOfFreeNonBorderCells;
+        return amountOfNonBorderUnknowns;
     }
 
-    function exhaustiveSearch(field, maxAllowedCandidates) {
+    function checkAllCombinations(field, maxAllowedUnknowns) {
         let resultInfo = {
-            clickableFound: false,
             resultIsCertain: false,
             messages: []
         };
 
-        const unflaggedBombsAmount = getUnflaggedBombsAmount(field);
+        const totalFlagsLeft = getFlagsLeft(field);
+        const amountOfNonBorderUnknowns = getAmountOfNonBorderUnknowns(field);
 
         let allBorderCells = getBorderCells(field);
-        let freeNonCandidates = getAmountOfFreeNonBorderCells(field);
-
-        let isSplit = allBorderCells.freeCells.length > maxAllowedCandidates;
+        let isSplitIntoIslands = allBorderCells.unknowns.length > maxAllowedUnknowns;
         let borderCellIslands;
 
-        if (isSplit) {
-            borderCellIslands = getBorderCellIslands(allBorderCells, maxAllowedCandidates, resultInfo);
+        if (isSplitIntoIslands) {
+            borderCellIslands = getBorderCellIslands(allBorderCells, maxAllowedUnknowns, resultInfo);
         } else {
             borderCellIslands = [allBorderCells];
         }
 
-        let islandResults = [];
-        let exhaustiveSearchT0 = performance.now();
+        resultInfo.messages.push("Candidate amount: " + allBorderCells.unknowns.length);
 
-        resultInfo.messages.push("Unflagged bombs amount: " + unflaggedBombsAmount);
-        resultInfo.messages.push("Candidate amount: " + allBorderCells.freeCells.length);
-        let noBombsLeftFound = false;
+        let islandResults = [];
+        let noFlagsLeftFound = false;
+
+        let checkAllCombinationsT0 = performance.now();
 
         borderCellIslands.forEach(borderCells => {
             if (resultInfo.resultIsCertain) {
@@ -412,35 +402,36 @@ function sweep(withAutoSolve = true, doLog = true, maxAllowedCandidates = 20) {
 
             let islandResult = { messages: [] };
             islandResults.push(islandResult);
-            let candidateNeighbors = borderCells.digitCells;
-            let candidates = borderCells.freeCells;
+
+            let candidateNeighbors = borderCells.digits;
+            let candidates = borderCells.unknowns;
             let candidateAmount = candidates.length;
 
             let iterations = 1;
-            let validPermutations = [0n, 1n];
+            let validCombinations = [0n, 1n];
 
             if (candidateAmount > 1) {
                 do {
                     iterations += 1;
-                    let newPermutations = [];
+                    let newCombinations = [];
 
-                    for (let previousMaskI = 0; previousMaskI < validPermutations.length; previousMaskI++) {
-                        newPermutations.push(validPermutations[previousMaskI]);
-                        newPermutations.push(validPermutations[previousMaskI] | (1n << BigInt(iterations - 1)));
+                    for (let previousMaskI = 0; previousMaskI < validCombinations.length; previousMaskI++) {
+                        newCombinations.push(validCombinations[previousMaskI]);
+                        newCombinations.push(validCombinations[previousMaskI] | (1n << BigInt(iterations - 1)));
                     }
 
-                    validPermutations = [];
+                    validCombinations = [];
 
-                    for (let newPermutationI = 0; newPermutationI < newPermutations.length; newPermutationI++) {
-                        let mask = newPermutations[newPermutationI];
+                    for (let newCombinationI = 0; newCombinationI < newCombinations.length; newCombinationI++) {
+                        let mask = newCombinations[newCombinationI];
 
                         for (let i = 0; i < candidateNeighbors.length; i++) {
                             let digitNeighbor = candidateNeighbors[i];
-                            digitNeighbor.maskFlaggedNeighbors = digitNeighbor.flaggedNeighbors;
-                            digitNeighbor.maskFreeNeighbors = digitNeighbor.freeNeighbors;
+                            digitNeighbor.maskFlaggedNeighbors = digitNeighbor.flaggedNeighborAmount;
+                            digitNeighbor.maskFreeNeighbors = digitNeighbor.unknownNeighborAmount;
                         }
 
-                        let bombsLeft = unflaggedBombsAmount;
+                        let bombsLeft = totalFlagsLeft;
                         let valid = true;
                         let orComparer = 1n;
 
@@ -453,7 +444,7 @@ function sweep(withAutoSolve = true, doLog = true, maxAllowedCandidates = 20) {
 
                                 if (bombsLeft < 0) {
                                     valid = false;
-                                    noBombsLeftFound = true;
+                                    noFlagsLeftFound = true;
                                     break;
                                 }
                             }
@@ -479,23 +470,23 @@ function sweep(withAutoSolve = true, doLog = true, maxAllowedCandidates = 20) {
                         }
 
                         if (valid) {
-                            validPermutations.push(mask);
+                            validCombinations.push(mask);
                         }
                     }
 
                 } while (iterations < candidateAmount);
             }
 
-            if (validPermutations.length > 0) {
+            if (validCombinations.length > 0) {
                 let occurencesOfOnes = Array(candidateAmount).fill(0);
                 let leastBombs = candidateAmount;
                 let mostBombs = 0;
 
-                for (let i = 0; i < validPermutations.length; i++) {
+                for (let i = 0; i < validCombinations.length; i++) {
                     let bombs = 0;
 
                     for (let j = 0; j < candidateAmount; j++) {
-                        let isOne = ((1n << BigInt(j) & validPermutations[i])) !== 0n;
+                        let isOne = ((1n << BigInt(j) & validCombinations[i])) !== 0n;
 
                         if (isOne) {
                             bombs += 1;
@@ -507,14 +498,10 @@ function sweep(withAutoSolve = true, doLog = true, maxAllowedCandidates = 20) {
                     mostBombs = Math.max(mostBombs, bombs);
                 }
 
-                if (mostBombs > unflaggedBombsAmount) {
-                    throw Error("Permutations with more bombs than existing!");
-                }
-
-                let noBombsLeftForRest = (leastBombs === unflaggedBombsAmount && freeNonCandidates > 0);
+                let noBombsLeftForRest = (leastBombs === totalFlagsLeft && amountOfNonBorderUnknowns > 0);
 
                 if (noBombsLeftForRest) {
-                    resultInfo.messages.push("Clickable found, no bombs left for non candidates");
+                    resultInfo.messages.push("Clickables found - no bombs left for non candidates");
 
                     applyToCells(field, cell => {
                         if (cell.isHidden && !cell.isFlagged && !cell.isBorderCell) {
@@ -524,8 +511,8 @@ function sweep(withAutoSolve = true, doLog = true, maxAllowedCandidates = 20) {
                     });
                 }
 
-                let fractionOfOnes = occurencesOfOnes.map(c => c / validPermutations.length);
-                let percentOfOnes = occurencesOfOnes.map(c => (c / validPermutations.length * 100.0).toFixed(1) + "%");
+                let fractionOfOnes = occurencesOfOnes.map(c => c / validCombinations.length);
+                let percentOfOnes = occurencesOfOnes.map(c => (c / validCombinations.length * 100.0).toFixed(1) + "%");
                 let divProbs = [];
 
                 candidates.forEach((candidate, i) => {
@@ -543,7 +530,7 @@ function sweep(withAutoSolve = true, doLog = true, maxAllowedCandidates = 20) {
                     if (divProb.fraction === 0) {
 
                         if (!anyZeroPercent) {
-                            resultInfo.messages.push("Clickable found, no bomb in any valid permutation");
+                            resultInfo.messages.push("Clickables found - no bomb in any valid combination");
                             anyZeroPercent = true;
                         }
 
@@ -553,28 +540,20 @@ function sweep(withAutoSolve = true, doLog = true, maxAllowedCandidates = 20) {
                 });
 
                 if (noBombsLeftForRest || anyZeroPercent) {
-                    resultInfo.clickableFound = true;
                     resultInfo.resultIsCertain = true;
                 } else {
                     let flagsFound = false;
 
                     divProbs.forEach(divProb => {
                         if (divProb.fraction === 1) {
-                            divProb.candidate.isFlagged = true;
-
-                            processFlags(field);
-                            let clicksChanged = determineTrivialClicks(field);
-
-                            if (clicksChanged) {
-                                flagsFound = true;
-                            }
+                            flagDiv(divProb.div);
+                            flagsFound = true;
                         }
                     });
 
                     if (flagsFound) {
-                        resultInfo.clickableFound = true;
                         resultInfo.resultIsCertain = true;
-                        resultInfo.messages.push("Flag Changed found");
+                        resultInfo.messages.push("Flag found");
                     } else {
                         islandResult.resultIsCertain = false;
 
@@ -588,7 +567,7 @@ function sweep(withAutoSolve = true, doLog = true, maxAllowedCandidates = 20) {
 
                         islandResult.bestToClick = lowestDivProb;
 
-                        if (withAutoSolve) {
+                        if (withGuessing) {
                             islandResult.messages.push("Reveal lowest probability cell (" + lowestDivProb.percentage + ")");
                         } else {
                             islandResult.messages.push("No certain cell found");
@@ -599,14 +578,14 @@ function sweep(withAutoSolve = true, doLog = true, maxAllowedCandidates = 20) {
             }
         });
 
-        let exhaustiveSearchT1 = performance.now();
-        let exhaustiveSearchTime = (exhaustiveSearchT1 - exhaustiveSearchT0);
+        let checkAllCombinationsT1 = performance.now();
+        let checkAllCombinationsTime = (checkAllCombinationsT1 - checkAllCombinationsT0);
 
-        if (noBombsLeftFound) {
+        if (noFlagsLeftFound) {
             resultInfo.messages.push("Case with no bombs left found");
         }
 
-        resultInfo.messages.push("Exhaustive search took " + exhaustiveSearchTime.toFixed(4) + " milliseconds.");
+        resultInfo.messages.push("Check of all combinations took " + checkAllCombinationsTime.toFixed(4) + " milliseconds");
 
         if (!resultInfo.resultIsCertain) {
             let bestResult = null;
@@ -620,7 +599,7 @@ function sweep(withAutoSolve = true, doLog = true, maxAllowedCandidates = 20) {
             if (bestResult && bestResult.bestToClick) {
                 resultInfo.messages = resultInfo.messages.concat(bestResult.messages);
 
-                if (withAutoSolve) {
+                if (withGuessing) {
                     simulate(bestResult.bestToClick.div, "mouseup");
                 } else {
                     resultInfo.messages.push("Candidates with probability of being a bomb:");
@@ -665,11 +644,11 @@ function sweep(withAutoSolve = true, doLog = true, maxAllowedCandidates = 20) {
         return resultInfo;
     }
 
-    function getUnflaggedBombsAmount(field) {
+    function getFlagsLeft(field) {
         let bombAmount = getBombAmount();
         let flagsAmount = getFlagsAmount(field);
-        let unflaggedBombsAmount = bombAmount - flagsAmount;
-        return unflaggedBombsAmount;
+        let flagsLeft = bombAmount - flagsAmount;
+        return flagsLeft;
     }
 
     function getBombAmount() {
@@ -699,7 +678,7 @@ function sweep(withAutoSolve = true, doLog = true, maxAllowedCandidates = 20) {
         applyToCells(field, cell => {
             if (!cell.isHidden) {
                 isStart = false;
-                return true;
+                return "break";
             }
         });
 
@@ -707,30 +686,30 @@ function sweep(withAutoSolve = true, doLog = true, maxAllowedCandidates = 20) {
     }
 
     function checkForSolved(field) {
-        let isFinish = true;
+        let isSolved = true;
 
         applyToCells(field, cell => {
-            if (cell.isDigit && cell.hiddenNeighborAmount !== cell.value) {
-                isFinish = false;
-                return true;
+            if (cell.isUnknown) {
+                isSolved = false;
+                return "break";
             }
         });
 
-        return isFinish;
+        return isSolved;
     }
 
-    function borderDigitsValid(digitCells) {
+    function borderDigitsValid(digits) {
         let valid = true;
 
-        for (let i = 0; i < digitCells.length; i++) {
-            let digitCell = digitCells[i];
-            let bombCapacity = digitCell.value - digitCell.flaggedNeighbors;
+        for (let i = 0; i < digits.length; i++) {
+            let digit = digits[i];
+            let flagsLeft = digit.value - digit.flaggedNeighborAmount;
 
-            digitCell.neighbors.forEach(freeCell => {
-                if (valid && freeCell.isFlagged) {
-                    bombCapacity -= 1;
+            digit.neighbors.forEach(neighbor => {
+                if (valid && neighbor.isFlagged) {
+                    flagsLeft -= 1;
 
-                    if (bombCapacity < 0) {
+                    if (flagsLeft < 0) {
                         valid = false;
                     }
                 }
@@ -744,39 +723,39 @@ function sweep(withAutoSolve = true, doLog = true, maxAllowedCandidates = 20) {
         return valid;
     }
 
-    function assumeDigitsFlagPermutations(field) {
-        let newBombsFound = false;
-        let digitsCellsLength = getBorderCells(field).digitCells.length;
-        let confirmedFlags = [];
+    function checkDigitsFlagCombinations(field) {
+        let flagsFound = false;
+        let digitsLength = getBorderCells(field).digits.length;
 
-        for (let i = 0; i < digitsCellsLength; i++) {
-            let digitCells = getBorderCells(field).digitCells;
-            let digitCell = digitCells[i];
+        for (let i = 0; i < digitsLength; i++) {
+            let digits = getBorderCells(field).digits;
+            let digit = digits[i];
 
-            let freeNeighbors = digitCell.freeNeighbors;
-            let permutationAmount = (1 << freeNeighbors);
+            let unknownNeighborAmount = digit.unknownNeighborAmount;
+            let combinationAmount = (1 << unknownNeighborAmount);
             let validStateAmount = 0;
-            let bombsLeft = (digitCell.value - digitCell.flaggedNeighbors);
-            let bombCandidates = [];
+            let flagsLeft = (digit.value - digit.flaggedNeighborAmount);
+            let flagCandidates = [];
 
-            digitCell.neighbors.forEach(bombCandidateCell => {
-                bombCandidateCell.includedCount = 0;
-                bombCandidates.push(bombCandidateCell);
+            digit.neighbors.forEach(flagCandidate => {
+                flagCandidate.includedCount = 0;
+                flagCandidates.push(flagCandidate);
             });
 
-            for (let mask = 0; mask < permutationAmount; mask++) {
-                let amountOf1s = countBitwise1s(mask);
+            for (let mask = 0; mask < combinationAmount; mask++) {
+                let bitwiseOnes = countBitwiseOnes(mask);
 
-                if (amountOf1s === bombsLeft) {
-                    for (let j = 0; j < freeNeighbors; j++) {
-                        let is1 = ((1 << j) & mask) !== 0;
-                        bombCandidates[j].isFlagged = is1;
+                if (bitwiseOnes === flagsLeft) {
+                    for (let unknownI = 0; unknownI < unknownNeighborAmount; unknownI++) {
+                        let isOneAtUnknownI = ((1 << unknownI) & mask) !== 0;
+                        flagCandidates[unknownI].isFlagged = isOneAtUnknownI;
+                        flagCandidates[unknownI].isUnknown = !isOneAtUnknownI;
                     }
 
-                    if (borderDigitsValid(digitCells)) {
-                        bombCandidates.forEach(bombCandidate => {
-                            if (bombCandidate.isFlagged) {
-                                bombCandidate.includedCount += 1;
+                    if (borderDigitsValid(digits)) {
+                        flagCandidates.forEach(flagCandidate => {
+                            if (flagCandidate.isFlagged) {
+                                flagCandidate.includedCount += 1;
                             }
                         });
 
@@ -785,204 +764,191 @@ function sweep(withAutoSolve = true, doLog = true, maxAllowedCandidates = 20) {
                 }
             }
 
-            bombCandidates.forEach(bombCandidate => {
-                if (bombCandidate.includedCount === validStateAmount) {
-                    confirmedFlags.push(bombCandidate);
+            flagCandidates.forEach(flagCandidate => {
+                if (flagCandidate.includedCount === validStateAmount) {
+                    flagDiv(flagCandidate.div);
+                    flagsFound = true;
                 }
             });
         }
 
-        confirmedFlags.forEach(confirmedFlag => {
-            let originalCell = field[confirmedFlag.y][confirmedFlag.x];
-            if (!originalCell.isFlagged) {
-                originalCell.isFlagged = true;
-                newBombsFound = true;
-            }
-        });
-
-        if (newBombsFound) {
-            processFlags(field);
-        }
-
-        return newBombsFound;
+        return flagsFound;
     }
 
-    function countBitwise1s(n) {
-        return n.toString(2).replace(/0/g, "").length;
+    function countBitwiseOnes(number) {
+        return number.toString(2).replace(/0/g, "").length;
     }
 
     function getBorderCells(field) {
-        let fieldDigitBorderCells = [];
-        let digitBorderCells = [];
+        let fieldBorderDigits = [];
+        let borderDigits = [];
 
         applyToCells(field, cell => {
             if (cell.isDigit) {
-                cell.freeNeighbors = (cell.hiddenNeighborAmount - cell.flaggedNeighbors);
-
-                if (cell.freeNeighbors > 0) {
+                if (cell.unknownNeighborAmount > 0) {
                     cell.isBorderCell = true;
-                    fieldDigitBorderCells.push(cell);
-                    digitBorderCells.push(createDigitBorderCell(cell));
+                    fieldBorderDigits.push(cell);
+                    borderDigits.push(createBorderDigit(cell));
                 }
             }
         });
 
-        let fieldFreeBorderCells = [];
-        let freeBorderCells = [];
+        let fieldBorderUnknowns = [];
+        let borderUnknowns = [];
 
-        fieldDigitBorderCells.forEach((fieldDigitBorderCell, i) => {
-            fieldDigitBorderCell.neighbors.forEach(neighbor => {
-                if (neighbor.isHidden && !neighbor.isFlagged) {
-                    if (!fieldFreeBorderCells.includes(neighbor)) {
-                        neighbor.isBorderCell = true;
-                        fieldFreeBorderCells.push(neighbor);
-                        let created = createFreeBorderCell(neighbor);
-                        freeBorderCells.push(created);
-                        digitBorderCells[i].neighbors.push(created);
-                        created.neighbors.push(digitBorderCells[i]);
+        if (fieldBorderDigits.length > 0) {
+
+            fieldBorderDigits.forEach((fieldDigitBorderCell, i) => {
+                fieldDigitBorderCell.neighbors.forEach(neighbor => {
+                    if (neighbor.isUnknown) {
+                        if (!fieldBorderUnknowns.includes(neighbor)) {
+                            neighbor.isBorderCell = true;
+                            fieldBorderUnknowns.push(neighbor);
+                            let created = createBorderUnknown(neighbor);
+                            borderUnknowns.push(created);
+                            borderDigits[i].neighbors.push(created);
+                            created.neighbors.push(borderDigits[i]);
+                        }
+                        else {
+                            let indexOfUnknown = fieldBorderUnknowns.indexOf(neighbor);
+                            borderDigits[i].neighbors.push(borderUnknowns[indexOfUnknown]);
+                            borderUnknowns[indexOfUnknown].neighbors.push(borderDigits[i]);
+                        }
                     }
-                    else {
-                        let freeIndex = fieldFreeBorderCells.indexOf(neighbor);
-                        digitBorderCells[i].neighbors.push(freeBorderCells[freeIndex]);
-                        freeBorderCells[freeIndex].neighbors.push(digitBorderCells[i]);
-                    }
+                });
+            });
+        } else {
+            applyToCells(field, cell => {
+                if (cell.isUnknown) {
+                    cell.isBorderCell = true;
+                    borderUnknowns.push(createBorderDigit(cell));
                 }
             });
-        });
+        }
 
         return {
-            digitCells: digitBorderCells,
-            freeCells: freeBorderCells
+            digits: borderDigits,
+            unknowns: borderUnknowns
         };
     }
 
-    function createFreeBorderCell(fieldFreeBorderCell) {
+    function createBorderUnknown(fieldBorderUnknown) {
         return {
-            jDiv: fieldFreeBorderCell.jDiv,
-            div: fieldFreeBorderCell.div,
-            x: fieldFreeBorderCell.x,
-            y: fieldFreeBorderCell.y,
-            isDigit: false,
-            isFlagged: false,
+            jDiv: fieldBorderUnknown.jDiv,
+            div: fieldBorderUnknown.div,
+            x: fieldBorderUnknown.x,
+            y: fieldBorderUnknown.y,
+            isHidden: true,
+            isUnknown: true,
+            value: -1,
             neighbors: []
         };
     }
 
-    function createDigitBorderCell(fieldDigitBorderCell) {
+    function createBorderDigit(fieldBorderDigit) {
         return {
-            jDiv: fieldDigitBorderCell.jDiv,
-            div: fieldDigitBorderCell.div,
-            x: fieldDigitBorderCell.x,
-            y: fieldDigitBorderCell.y,
-            freeNeighbors: fieldDigitBorderCell.freeNeighbors,
-            flaggedNeighbors: fieldDigitBorderCell.flaggedNeighbors,
+            jDiv: fieldBorderDigit.jDiv,
+            div: fieldBorderDigit.div,
+            x: fieldBorderDigit.x,
+            y: fieldBorderDigit.y,
+            unknownNeighborAmount: fieldBorderDigit.unknownNeighborAmount,
+            flaggedNeighborAmount: fieldBorderDigit.flaggedNeighborAmount,
             isDigit: true,
-            value: fieldDigitBorderCell.value,
+            value: fieldBorderDigit.value,
             neighbors: []
         };
     }
 
-    function assumeFlags(field) {
-        let clicksFound = false;
-        let freeCellsLength = getBorderCells(field).freeCells.length;
+    function determineSuffocations(field) {
+        let suffocationsFound = false;
+        let unknownsLength = getBorderCells(field).unknowns.length;
 
-        for (let i = 0; i < freeCellsLength; i++) {
-            let freeCells = getBorderCells(field).freeCells;
-            let assumedFlag = freeCells[i];
+        for (let i = 0; i < unknownsLength; i++) {
+            let unknowns = getBorderCells(field).unknowns;
+            let assumedFlag = unknowns[i];
+            assumedFlag.isUnknown = false;
             assumedFlag.isFlagged = true;
 
-            let filledDigitCells = [];
+            let filledDigits = [];
 
             assumedFlag.neighbors.forEach(neighbor => {
-                neighbor.flaggedNeighbors += 1;
+                neighbor.flaggedNeighborAmount += 1;
+                neighbor.unknownNeighborAmount -= 1;
 
-                if (neighbor.flaggedNeighbors === neighbor.value) {
-                    filledDigitCells.push(neighbor);
+                if (neighbor.flaggedNeighborAmount === neighbor.value) {
+                    filledDigits.push(neighbor);
                 }
             });
 
-            if (filledDigitCells.length > 0) {
-                let unflaggedFreeCells = [];
+            if (filledDigits.length > 0) {
+                let filledDigitsUnknownNeighbors = [];
 
-                filledDigitCells.forEach(filledDigitCell => {
-                    filledDigitCell.neighbors.forEach(freeCell => {
-                        if (!freeCell.isFlagged && !unflaggedFreeCells.includes(freeCell)) {
-                            unflaggedFreeCells.push(freeCell);
+                filledDigits.forEach(filledDigit => {
+                    filledDigit.neighbors.forEach(neighbor => {
+                        if (neighbor.isUnknown && !filledDigitsUnknownNeighbors.includes(neighbor)) {
+                            filledDigitsUnknownNeighbors.push(neighbor);
                         }
                     });
                 });
 
-                if (unflaggedFreeCells.length > 0) {
-                    unflaggedFreeCells.forEach(unflaggedFreeCell => {
-                        unflaggedFreeCell.neighbors.forEach(digitToSuffcate => {
-                            if (!clicksFound && !filledDigitCells.includes(digitToSuffcate)) {
-                                digitToSuffcate.freeNeighbors -= 1;
+                if (filledDigitsUnknownNeighbors.length > 0) {
+                    let suffocationFound = false;
 
-                                if ((digitToSuffcate.value - digitToSuffcate.flaggedNeighbors) > digitToSuffcate.freeNeighbors) {
-                                    simulate(assumedFlag.div, "mouseup");
-                                    clicksFound = true;
+                    filledDigitsUnknownNeighbors.forEach(unknownNeighbor => {
+                        unknownNeighbor.neighbors.forEach(digitToSuffocate => {
+                            if (!suffocationFound && !filledDigits.includes(digitToSuffocate)) {
+                                digitToSuffocate.unknownNeighborAmount -= 1;
+                                let flagsLeft = digitToSuffocate.value - digitToSuffocate.flaggedNeighborAmount;
+
+                                if (flagsLeft > digitToSuffocate.unknownNeighborAmount) {
+                                    suffocationFound = true;
                                 }
                             }
                         });
                     });
+
+                    if (suffocationFound) {
+                        revealDiv(assumedFlag.div);
+                        suffocationsFound = true;
+                    }
                 }
             }
         }
 
-        return clicksFound;
+        return suffocationsFound;
     }
 
-    function determineTrivialClicks(field) {
-        let trivialClicksFound = false;
-
-        applyToCells(field, cell => {
-            if (cell.isDigit) {
-                cell.flaggedNeighbors = 0;
-
-                cell.neighbors.forEach(neighbor => {
-                    if (neighbor.isFlagged) {
-                        cell.flaggedNeighbors += 1;
-                    }
-                });
-
-                if (cell.flaggedNeighbors === cell.value) {
-                    cell.neighbors.forEach(neighbor => {
-                        if (neighbor.isHidden && !neighbor.isFlagged) {
-                            simulate(neighbor.div, "mouseup");
-                            trivialClicksFound = true;
-                        }
-                    });
-                }
-            }
-        });
-
-        return trivialClicksFound;
+    function revealDiv(div) {
+        simulate(div, "mouseup");
     }
 
-    function processFlags(field) {
-        applyToCells(field, cell => {
-            if (cell.isFlagged) {
-                cell.jDiv.css('background-position', '-32px -78px');
-            } else {
-                cell.jDiv.css('background-position', '');
-            }
-        });
+    function flagDiv(div) {
+        if (div.classList.value !== "square bombflagged") {
+            simulate(div, "mousedown", 2);
+            simulate(div, "mouseup", 2);
+        }
     }
 
     function determineTrivialFlags(field) {
+        let flagsFound = false;
+
         applyToCells(field, cell => {
-            if (cell.isDigit && cell.hiddenNeighborAmount === cell.value) {
+            if (cell.isDigit && cell.hiddenNeighborAmount === cell.value && cell.flaggedNeighborAmount !== cell.value) {
                 cell.neighbors.forEach(neighbor => {
-                    if (neighbor.isHidden) {
-                        neighbor.isFlagged = true;
+                    if (neighbor.isUnknown) {
+                        flagDiv(neighbor.div);
+                        flagsFound = true;
                     }
                 });
             }
         });
+
+        return flagsFound;
     }
 
     function initializeField() {
         const openClass = "square open";
+        const flagClass = "square bombflagged";
 
         let field = [];
         let y = 0;
@@ -1014,6 +980,12 @@ function sweep(withAutoSolve = true, doLog = true, maxAllowedCandidates = 20) {
                 } else {
                     cell.isHidden = true;
                     cell.value = -1;
+
+                    if (jDivClass === flagClass) {
+                        cell.isFlagged = true;
+                    } else {
+                        cell.isUnknown = true;
+                    }
                 }
 
                 row.push(cell);
@@ -1035,16 +1007,20 @@ function sweep(withAutoSolve = true, doLog = true, maxAllowedCandidates = 20) {
     function setCellNeighborInfo(field) {
         applyToCells(field, cell => {
             cell.neighbors = [];
-            cell.hiddenNeighborAmount = 0;
+            cell.unknownNeighborAmount = 0;
+            cell.flaggedNeighborAmount = 0;
 
             applyToNeighbors(field, cell, neighborCell => {
-                if (neighborCell.isHidden) {
-                    cell.hiddenNeighborAmount += 1;
+                if (neighborCell.isUnknown) {
+                    cell.unknownNeighborAmount += 1;
+                } else if (neighborCell.isFlagged) {
+                    cell.flaggedNeighborAmount += 1;
                 }
 
                 cell.neighbors.push(neighborCell);
             });
 
+            cell.hiddenNeighborAmount = cell.unknownNeighborAmount + cell.flaggedNeighborAmount;
             cell.neighborAmount = cell.neighbors.length;
         });
     }
@@ -1052,7 +1028,7 @@ function sweep(withAutoSolve = true, doLog = true, maxAllowedCandidates = 20) {
     function applyToCells(matrix, action) {
         for (let y = 0; y < matrix.length; y++) {
             for (let x = 0; x < matrix[y].length; x++) {
-                let isBreak = action(matrix[y][x]) === true;
+                let isBreak = action(matrix[y][x]) === "break";
 
                 if (isBreak) {
                     return;
@@ -1077,7 +1053,7 @@ function sweep(withAutoSolve = true, doLog = true, maxAllowedCandidates = 20) {
                 let inBounds = yInBounds && xInBounds;
 
                 if (inBounds) {
-                    let isBreak = action(matrix[y][x]) === true;
+                    let isBreak = action(matrix[y][x]) === "break";
 
                     if (isBreak) {
                         return;
@@ -1088,7 +1064,7 @@ function sweep(withAutoSolve = true, doLog = true, maxAllowedCandidates = 20) {
     }
 }
 
-function simulate(element, eventName) {
+function simulate(element, eventName, mouseButton) {
     let eventMatchers = {
         'HTMLEvents': /^(?:load|unload|abort|error|select|change|submit|reset|focus|blur|resize|scroll)$/,
         'MouseEvents': /^(?:click|dblclick|mouse(?:down|up|over|move|out))$/
@@ -1097,7 +1073,7 @@ function simulate(element, eventName) {
     let defaultOptions = {
         pointerX: 0,
         pointerY: 0,
-        button: 0,
+        button: (mouseButton ? mouseButton : 0),
         ctrlKey: false,
         altKey: false,
         shiftKey: false,
