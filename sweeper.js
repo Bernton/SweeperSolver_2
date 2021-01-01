@@ -186,7 +186,7 @@ function sweep(withGuessing = true, doLog = true, maxAllowedUnknowns = 20) {
         }
 
         if (checkDigitsFlagCombinations(field)) {
-            onStandardSolving("[2] Check digits flag combinations");
+            return onStandardSolving("[2] Check digits flag combinations");
         }
 
         let resultInfo = checkAllCombinations(field, maxAllowedUnknowns);
@@ -534,7 +534,7 @@ function sweep(withGuessing = true, doLog = true, maxAllowedUnknowns = 20) {
                             anyZeroPercent = true;
                         }
 
-                        simulate(divProb.div, "mouseup");
+                        revealDiv(divProb.div);
                         resultInfo.messages.push(divProb.div);
                     }
                 });
@@ -546,14 +546,19 @@ function sweep(withGuessing = true, doLog = true, maxAllowedUnknowns = 20) {
 
                     divProbs.forEach(divProb => {
                         if (divProb.fraction === 1) {
+
+                            if (!flagsFound) {
+                                resultInfo.messages.push("Flags found - bomb in every valid combination");
+                                flagsFound = true;
+                            }
+
                             flagDiv(divProb.div);
-                            flagsFound = true;
+                            resultInfo.messages.push(divProb.div);
                         }
                     });
 
                     if (flagsFound) {
                         resultInfo.resultIsCertain = true;
-                        resultInfo.messages.push("Flag found");
                     } else {
                         islandResult.resultIsCertain = false;
 
