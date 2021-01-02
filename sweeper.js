@@ -7,7 +7,7 @@ let SweepStates = Object.freeze({
 });
 
 let AutoSweepConfig = {
-    doLog: true,
+    doLog: false,
     autoSweepEnabled: false,
     maxAllowedUnknowns: 50,
     lastRestState: null,
@@ -19,7 +19,8 @@ let AutoSweepConfig = {
 };
 
 let AutoSweepStats = {
-    stateCounts: {
+    stateCounts: [],
+    currentStateCounts: {
         start: 0,
         solving: 0,
         stuck: 0,
@@ -85,11 +86,22 @@ function stopAutoSweep() {
     AutoSweepConfig.autoSweepEnabled = false;
 }
 
-function formatLogAutoSweepInfo() {
-    let solved = AutoSweepStats.stateCounts[SweepStates.solved];
-    let death = AutoSweepStats.stateCounts[SweepStates.death];
+function formatLogAutoSweepInfo(index) {
+
+    let isCurrent = (typeof index === "undefined");
+    let stateCount;
+
+    if (isCurrent) {
+        stateCount = AutoSweepStats.currentStateCounts;
+        index = AutoSweepStats.stateCounts.length;
+    } else {
+        stateCount = AutoSweepStats.stateCounts[index];
+    }
+
+    let solved = stateCount[SweepStates.solved];
+    let death = stateCount[SweepStates.death];
     let winPercentage = (solved / (solved + death) * 100);
-    console.log("Solved: " + (winPercentage.toFixed(2)) + "% " + solved + ":" + death);
+    console.log("[" + index + "] " + "Solved: " + (winPercentage.toFixed(2)) + "% " + solved + ":" + death);
 }
 
 function toggleDoLog() {
@@ -102,11 +114,12 @@ function startNewGame() {
 }
 
 function resetAutoSweepResults() {
-    AutoSweepStats.stateCounts.start = 0;
-    AutoSweepStats.stateCounts.solving = 0;
-    AutoSweepStats.stateCounts.stuck = 0;
-    AutoSweepStats.stateCounts.solved = 0;
-    AutoSweepStats.stateCounts.death = 0;
+    AutoSweepStats.currentStateCounts.start = 0;
+    AutoSweepStats.currentStateCounts.solving = 0;
+    AutoSweepStats.currentStateCounts.stuck = 0;
+    AutoSweepStats.currentStateCounts.solved = 0;
+    AutoSweepStats.currentStateCounts.death = 0;
+    AutoSweepStats.stateCounts = [];
 }
 
 function autoSweep(withAutoSolve = true, config = AutoSweepConfig) {
@@ -123,7 +136,7 @@ function autoSweep(withAutoSolve = true, config = AutoSweepConfig) {
 
             if (state === SweepStates.solving) {
                 stateIdleTime = config.solvingIdleTime;
-                AutoSweepStats.stateCounts[state] += 1;
+                AutoSweepStats.currentStateCounts[state] += 1;
             } else {
                 if (isNewGameState(state) && config.newGameStateIdleTime !== null) {
                     stateIdleTime = config.newGameStateIdleTime;
@@ -134,7 +147,19 @@ function autoSweep(withAutoSolve = true, config = AutoSweepConfig) {
                 }
 
                 if (!config.lastRestState || config.lastRestState !== state) {
-                    AutoSweepStats.stateCounts[state] += 1;
+                    AutoSweepStats.currentStateCounts[state] += 1;
+
+                    if (isNewGameState(state)) {
+                        var current = AutoSweepStats.currentStateCounts;
+                        AutoSweepStats.stateCounts.push(current);
+                        AutoSweepStats.currentStateCounts = {
+                            start: current.start,
+                            solving: current.solving,
+                            stuck: current.stuck,
+                            solved: current.solved,
+                            death: current.death
+                        };
+                    }
                 }
 
                 config.lastRestState = state;
@@ -357,16 +382,24 @@ function sweep(withGuessing = true, doLog = true, maxAllowedUnknowns = 20) {
         return islandBorderCellLists;
     }
 
-    function getAmountOfNonBorderUnknowns(field) {
-        let amountOfNonBorderUnknowns = 0;
+    function getOutsideUnknowns(field) {
+        let outsideUnknowns = [];
 
         applyToCells(field, cell => {
             if (cell.isUnknown && !cell.isBorderCell) {
-                amountOfNonBorderUnknowns += 1;
+                cell.borderCellNeighborAmount = 0;
+
+                cell.neighbors.forEach(neighbor => {
+                    if (neighbor.isBorderCell) {
+                        cell.borderCellNeighborAmount += 1;
+                    }
+                });
+
+                outsideUnknowns.push(cell);
             }
         });
 
-        return amountOfNonBorderUnknowns;
+        return outsideUnknowns;
     }
 
     function getBorderCellGroupings(field, maxAllowedUnknowns, resultInfo) {
@@ -391,8 +424,8 @@ function sweep(withGuessing = true, doLog = true, maxAllowedUnknowns = 20) {
         };
 
         let totalFlagsLeft = getFlagsLeft(field);
-        let amountOfNonBorderUnknowns = getAmountOfNonBorderUnknowns(field);
         let borderCellGroupings = getBorderCellGroupings(field, maxAllowedUnknowns, resultInfo);
+        let outsideUnknowns = getOutsideUnknowns(field);
 
         let islandResults = [];
         let caseWithNoFlagsLeftFound = false;
@@ -400,173 +433,160 @@ function sweep(withGuessing = true, doLog = true, maxAllowedUnknowns = 20) {
         let checkAllCombinationsT0 = performance.now();
 
         borderCellGroupings.forEach(borderCells => {
-            if (resultInfo.resultIsCertain) {
-                return;
-            }
+            if (!resultInfo.resultIsCertain) {
+                let islandResult = { messages: [] };
+                islandResults.push(islandResult);
 
-            let islandResult = { messages: [] };
-            islandResults.push(islandResult);
+                let digits = borderCells.digits;
+                let candidates = borderCells.unknowns;
 
-            let digits = borderCells.digits;
-            let candidates = borderCells.unknowns;
-            let candidateAmount = candidates.length;
+                let validCombinations = [0n, 1n];
 
-            let validCombinations = [0n, 1n];
+                for (let includedCandidates = 2; includedCandidates <= candidates.length; includedCandidates++) {
+                    let newCombinations = [];
 
-            for (let includedCandidates = 2; includedCandidates <= candidateAmount; includedCandidates++) {
-                let newCombinations = [];
-
-                for (let previousMaskI = 0; previousMaskI < validCombinations.length; previousMaskI++) {
-                    newCombinations.push(validCombinations[previousMaskI]);
-                    newCombinations.push(validCombinations[previousMaskI] | (1n << BigInt(includedCandidates - 1)));
-                }
-
-                validCombinations = [];
-
-                for (let newCombinationI = 0; newCombinationI < newCombinations.length; newCombinationI++) {
-                    let combination = newCombinations[newCombinationI];
-
-                    for (let i = 0; i < digits.length; i++) {
-                        let digit = digits[i];
-                        digit.maskFlaggedNeighbors = digit.flaggedNeighborAmount;
-                        digit.maskFreeNeighbors = digit.unknownNeighborAmount;
+                    for (let previousMaskI = 0; previousMaskI < validCombinations.length; previousMaskI++) {
+                        newCombinations.push(validCombinations[previousMaskI]);
+                        newCombinations.push(validCombinations[previousMaskI] | (1n << BigInt(includedCandidates - 1)));
                     }
 
-                    let flagsLeft = totalFlagsLeft;
-                    let andComparer = 1n;
-                    let valid = true;
+                    validCombinations = [];
 
-                    for (let candidateI = 0; candidateI < includedCandidates; candidateI++) {
-                        let setAsBomb = (andComparer & combination) !== 0n;
-                        let digitNeighborAmount = candidates[candidateI].neighbors.length;
+                    for (let newCombinationI = 0; newCombinationI < newCombinations.length; newCombinationI++) {
+                        let combination = newCombinations[newCombinationI];
 
-                        if (setAsBomb) {
-                            flagsLeft -= 1;
-
-                            if (flagsLeft < 0) {
-                                valid = false;
-                                caseWithNoFlagsLeftFound = true;
-                                break;
-                            }
+                        for (let i = 0; i < digits.length; i++) {
+                            let digit = digits[i];
+                            digit.maskFlaggedNeighbors = digit.flaggedNeighborAmount;
+                            digit.maskFreeNeighbors = digit.unknownNeighborAmount;
                         }
 
-                        for (let neighborI = 0; neighborI < digitNeighborAmount; neighborI++) {
-                            let digitNeighbor = candidates[candidateI].neighbors[neighborI];
+                        let flagsLeft = totalFlagsLeft;
+                        let andComparer = 1n;
+                        let valid = true;
 
-                            digitNeighbor.maskFreeNeighbors -= 1;
+                        for (let candidateI = 0; candidateI < includedCandidates; candidateI++) {
+                            let setAsBomb = (andComparer & combination) !== 0n;
+                            let digitNeighborAmount = candidates[candidateI].neighbors.length;
 
                             if (setAsBomb) {
-                                digitNeighbor.maskFlaggedNeighbors += 1;
+                                flagsLeft -= 1;
+
+                                if (flagsLeft < 0) {
+                                    valid = false;
+                                    caseWithNoFlagsLeftFound = true;
+                                    break;
+                                }
                             }
 
-                            if ((digitNeighbor.maskFlaggedNeighbors > digitNeighbor.value) ||
-                                ((digitNeighbor.maskFreeNeighbors + digitNeighbor.maskFlaggedNeighbors) < digitNeighbor.value)) {
-                                valid = false;
-                                candidateI = includedCandidates;
-                                break;
+                            for (let neighborI = 0; neighborI < digitNeighborAmount; neighborI++) {
+                                let digitNeighbor = candidates[candidateI].neighbors[neighborI];
+
+                                digitNeighbor.maskFreeNeighbors -= 1;
+
+                                if (setAsBomb) {
+                                    digitNeighbor.maskFlaggedNeighbors += 1;
+                                }
+
+                                if ((digitNeighbor.maskFlaggedNeighbors > digitNeighbor.value) ||
+                                    ((digitNeighbor.maskFreeNeighbors + digitNeighbor.maskFlaggedNeighbors) < digitNeighbor.value)) {
+                                    valid = false;
+                                    candidateI = includedCandidates;
+                                    break;
+                                }
+                            }
+
+                            andComparer = andComparer << 1n;
+                        }
+
+                        if (valid) {
+                            validCombinations.push(combination);
+                        }
+                    }
+                }
+
+                if (validCombinations.length > 0) {
+                    let occurencesOfOnes = Array(candidates.length).fill(0);
+                    let leastBombs = candidates.length;
+
+                    for (let i = 0; i < validCombinations.length; i++) {
+                        let bombs = 0;
+
+                        for (let j = 0; j < candidates.length; j++) {
+                            let isOne = ((1n << BigInt(j) & validCombinations[i])) !== 0n;
+
+                            if (isOne) {
+                                bombs += 1;
+                                occurencesOfOnes[j] += 1;
                             }
                         }
 
-                        andComparer = andComparer << 1n;
+                        leastBombs = Math.min(leastBombs, bombs);
                     }
 
-                    if (valid) {
-                        validCombinations.push(combination);
-                    }
-                }
-            }
+                    let noBombsLeftForRest = (leastBombs === totalFlagsLeft && outsideUnknowns.length > 0);
 
-            if (validCombinations.length > 0) {
-                let occurencesOfOnes = Array(candidateAmount).fill(0);
-                let leastBombs = candidateAmount;
+                    if (noBombsLeftForRest) {
+                        resultInfo.messages.push("Clickables found - no bombs left for non candidates");
 
-                for (let i = 0; i < validCombinations.length; i++) {
-                    let bombs = 0;
-
-                    for (let j = 0; j < candidateAmount; j++) {
-                        let isOne = ((1n << BigInt(j) & validCombinations[i])) !== 0n;
-
-                        if (isOne) {
-                            bombs += 1;
-                            occurencesOfOnes[j] += 1;
-                        }
+                        applyToCells(field, cell => {
+                            if (cell.isHidden && !cell.isFlagged && !cell.isBorderCell) {
+                                revealDiv(cell.div);
+                                resultInfo.messages.push(cell.div);
+                            }
+                        });
                     }
 
-                    leastBombs = Math.min(leastBombs, bombs);
-                }
+                    let fractionOfOnes = occurencesOfOnes.map(c => c / validCombinations.length);
+                    let percentOfOnes = occurencesOfOnes.map(c => (c / validCombinations.length * 100.0).toFixed(1) + "%");
+                    let divProbs = [];
 
-                let noBombsLeftForRest = (leastBombs === totalFlagsLeft && amountOfNonBorderUnknowns > 0);
-
-                if (noBombsLeftForRest) {
-                    resultInfo.messages.push("Clickables found - no bombs left for non candidates");
-
-                    applyToCells(field, cell => {
-                        if (cell.isHidden && !cell.isFlagged && !cell.isBorderCell) {
-                            revealDiv(cell.div);
-                            resultInfo.messages.push(cell.div);
-                        }
+                    candidates.forEach((candidate, i) => {
+                        divProbs.push({
+                            div: candidate.div,
+                            percentage: percentOfOnes[i],
+                            fraction: fractionOfOnes[i],
+                            score: fractionOfOnes[i],
+                            candidate: candidate
+                        });
                     });
-                }
 
-                let fractionOfOnes = occurencesOfOnes.map(c => c / validCombinations.length);
-                let percentOfOnes = occurencesOfOnes.map(c => (c / validCombinations.length * 100.0).toFixed(1) + "%");
-                let divProbs = [];
-
-                candidates.forEach((candidate, i) => {
-                    divProbs.push({
-                        div: candidate.div,
-                        percentage: percentOfOnes[i],
-                        fraction: fractionOfOnes[i],
-                        candidate: candidate
-                    });
-                });
-
-                let anyZeroPercent = false;
-
-                divProbs.forEach(divProb => {
-                    if (divProb.fraction === 0) {
-                        if (!anyZeroPercent) {
-                            resultInfo.messages.push("Clickables found - no bomb in any valid combination");
-                            anyZeroPercent = true;
-                        }
-
-                        revealDiv(divProb.div);
-                        resultInfo.messages.push(divProb.div);
-                    }
-                });
-
-                if (noBombsLeftForRest || anyZeroPercent) {
-                    resultInfo.resultIsCertain = true;
-                } else {
-                    let flagsFound = false;
+                    let anyZeroPercent = false;
 
                     divProbs.forEach(divProb => {
-                        if (divProb.fraction === 1) {
-                            if (!flagsFound) {
-                                resultInfo.messages.push("Flags found - bomb in every valid combination");
-                                flagsFound = true;
+                        if (divProb.fraction === 0) {
+                            if (!anyZeroPercent) {
+                                resultInfo.messages.push("Clickables found - no bomb in any valid combination");
+                                anyZeroPercent = true;
                             }
 
-                            flagDiv(divProb.div);
+                            revealDiv(divProb.div);
                             resultInfo.messages.push(divProb.div);
                         }
                     });
 
-                    if (flagsFound) {
+                    if (noBombsLeftForRest || anyZeroPercent) {
                         resultInfo.resultIsCertain = true;
                     } else {
-                        islandResult.resultIsCertain = false;
-
-                        let lowestDivProb = null;
+                        let flagsFound = false;
 
                         divProbs.forEach(divProb => {
-                            if (!lowestDivProb || divProb.fraction < lowestDivProb.fraction) {
-                                lowestDivProb = divProb;
+                            if (divProb.fraction === 1) {
+                                if (!flagsFound) {
+                                    resultInfo.messages.push("Flags found - bomb in every valid combination");
+                                    flagsFound = true;
+                                }
+
+                                flagDiv(divProb.div);
+                                resultInfo.messages.push(divProb.div);
                             }
                         });
 
-                        islandResult.divProbs = divProbs;
-                        islandResult.lowestDivProb = lowestDivProb;
+                        if (flagsFound) {
+                            resultInfo.resultIsCertain = true;
+                        } else {
+                            islandResult.divProbs = divProbs;
+                        }
                     }
                 }
             }
@@ -582,33 +602,79 @@ function sweep(withGuessing = true, doLog = true, maxAllowedUnknowns = 20) {
         resultInfo.messages.push("Check of all combinations took " + checkAllCombinationsTime.toFixed(4) + " milliseconds");
 
         if (!resultInfo.resultIsCertain) {
+            let allDivProbs = [];
 
-            if (withGuessing) {
-                let lowestDivProb = null;
+            islandResults.forEach(islandResult => {
+                islandResult.divProbs.forEach(divProb => {
+                    allDivProbs.push(divProb);
+                });
+            });
 
-                islandResults.forEach(islandResult => {
-                    if (!lowestDivProb || (islandResult.lowestDivProb.fraction < lowestDivProb.fraction)) {
-                        lowestDivProb = islandResult.lowestDivProb;
+            if (outsideUnknowns.length > 0) {
+                let averageFlagsInBorder = 0;
+
+                allDivProbs.forEach(divProb => {
+                    averageFlagsInBorder += divProb.fraction;
+                });
+
+                let averageFlagsLeftOutside = totalFlagsLeft - averageFlagsInBorder;
+                let fractionForOutsideUnknowns = averageFlagsLeftOutside / outsideUnknowns.length;
+
+                outsideUnknowns = outsideUnknowns.sort((a, b) => {
+                    let flaggedNeighborAmountDiff = -(a.flaggedNeighborAmount - b.flaggedNeighborAmount);
+
+                    if (flaggedNeighborAmountDiff !== 0) {
+                        return flaggedNeighborAmountDiff;
+                    } else {
+                        return -(a.borderCellNeighborAmount - b.borderCellNeighborAmount);
                     }
                 });
 
-                if (lowestDivProb) {
-                    resultInfo.messages.push("Reveal lowest probability cell (" + lowestDivProb.percentage + ")");
+                let outsideCandidate = outsideUnknowns[0];
+
+                allDivProbs.push({
+                    div: outsideCandidate.div,
+                    percentage: (fractionForOutsideUnknowns * 100).toFixed(1) + "%",
+                    fraction: fractionForOutsideUnknowns,
+                    score: fractionForOutsideUnknowns,
+                    candidate: outsideCandidate,
+                    isOutside: true
+                });
+            }
+
+            allDivProbs.forEach(divProb => {
+                setTurnedTrivial(divProb);
+
+                if (divProb.turnedTrivial > 0) {
+                    divProb.score = Math.pow(divProb.fraction, 1.2);
+                }
+            });
+
+            allDivProbs = allDivProbs.sort((a, b) => {
+                let scoreDiff = a.score - b.score;
+
+                if (scoreDiff !== 0) {
+                    return scoreDiff;
+                } else {
+                    let turnedTrivialDiff = -(a.turnedTrivial - b.turnedTrivial);
+
+                    if (turnedTrivialDiff !== 0) {
+                        return turnedTrivialDiff;
+                    } else {
+                        return -(a.candidate.neighbors.length - b.candidate.neighbors.length);
+                    }
+                }
+            });
+
+            if (withGuessing) {
+                if (allDivProbs.length > 0) {
+                    let lowestDivProb = allDivProbs[0];
+                    resultInfo.messages.push("Reveal lowest score cell (" + lowestDivProb.percentage + ")");
                     revealDiv(lowestDivProb.div);
                 }
             } else {
                 resultInfo.messages.push("No certain cell found");
-                resultInfo.messages.push("Candidates with probability of being a bomb:");
-
-                let allDivProbs = [];
-
-                islandResults.forEach(islandResult => {
-                    islandResult.divProbs.forEach(divProb => {
-                        allDivProbs.push(divProb);
-                    });
-                });
-
-                allDivProbs = allDivProbs.sort((a, b) => a.fraction - b.fraction);
+                resultInfo.messages.push("Candidates with percentages:");
 
                 let counter = 1;
                 let placing = 1;
@@ -625,8 +691,28 @@ function sweep(withGuessing = true, doLog = true, maxAllowedUnknowns = 20) {
                 });
 
                 allDivProbs.forEach(divProb => {
-                    resultInfo.messages.push("#" + divProb.placing + " " + formatDivProbCoords(divProb) + ": " + divProb.percentage);
+                    let message = "#" + divProb.placing + " " + formatDivProbCoords(divProb) + ": " + divProb.percentage;
+
+                    if (divProb.isOutside) {
+                        message += " - Outsider";
+                    }
+
+                    resultInfo.messages.push(message);
                     resultInfo.messages.push(divProb.div);
+                });
+            }
+        }
+
+        function setTurnedTrivial(divProb) {
+            if (typeof divProb.turnedTrivial === "undefined") {
+                divProb.turnedTrivial = 0;
+
+                divProb.candidate.neighbors.forEach(digitNeighbor => {
+                    let flagsLeft = digitNeighbor.value - digitNeighbor.flaggedNeighborAmount;
+
+                    if (flagsLeft === (digitNeighbor.neighbors.length - 1)) {
+                        divProb.turnedTrivial += 1;
+                    }
                 });
             }
         }
@@ -833,6 +919,8 @@ function sweep(withGuessing = true, doLog = true, maxAllowedUnknowns = 20) {
             div: fieldBorderUnknown.div,
             x: fieldBorderUnknown.x,
             y: fieldBorderUnknown.y,
+            unknownNeighborAmount: fieldBorderUnknown.unknownNeighborAmount,
+            flaggedNeighborAmount: fieldBorderUnknown.flaggedNeighborAmount,
             isHidden: true,
             isUnknown: true,
             value: -1,
