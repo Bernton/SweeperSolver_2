@@ -629,7 +629,7 @@ function sweep(withGuessing = true, doLog = true, maxAllowedUnknowns = 20) {
             });
 
             if (!resultInfo.resultIsCertain) {
-                determineGroupingsCombined(field, groupingResults, outsideUnknowns, totalFlagsLeft, resultInfo);
+                checkGroupingsCombined(field, groupingResults, outsideUnknowns, totalFlagsLeft, resultInfo);
             }
 
             let checkAllCombinationsT1 = performance.now();
@@ -647,7 +647,7 @@ function sweep(withGuessing = true, doLog = true, maxAllowedUnknowns = 20) {
         let allDivProbs = [];
         let caseWithNoFlagsLeftFound = false;
 
-        if (groupingResults.length <= 1 || totalMostBombs <= totalFlagsLeft) {
+        if (outsideUnknowns.length > 0 && (groupingResults.length <= 1 || totalMostBombs <= totalFlagsLeft)) {
             groupingResults.forEach(groupingResult => {
                 groupingResult.divProbs.forEach(divProb => {
                     allDivProbs.push(divProb);
@@ -656,16 +656,15 @@ function sweep(withGuessing = true, doLog = true, maxAllowedUnknowns = 20) {
         } else {
             let mergedValidCombinations = [];
             let mergedCandidates = [];
+            let includesAll = outsideUnknowns.length === 0;
 
-            let failedCombinations = [];
+            groupingResults.forEach((groupingResult, i) => {
+                let newValidCombinations = [];
+                let currentLength = BigInt(mergedCandidates.length);
+                let toMergeLength = BigInt(groupingResult.divProbs.length);
+                let totalNewLength = currentLength + toMergeLength;
 
-            groupingResults.forEach((groupingResult) => {
                 if (mergedCandidates.length > 0) {
-                    let newValidCombinations = [];
-                    let currentLength = BigInt(mergedCandidates.length);
-                    let toMergeLength = BigInt(groupingResult.divProbs.length);
-                    let totalNewLength = currentLength + toMergeLength;
-
                     mergedValidCombinations.forEach(currentCombination => {
                         groupingResult.validCombinations.forEach(combinationToMerge => {
                             let newCombination = currentCombination | (combinationToMerge << currentLength);
@@ -683,11 +682,14 @@ function sweep(withGuessing = true, doLog = true, maxAllowedUnknowns = 20) {
                                 if (flagAmount > totalFlagsLeft) {
                                     caseWithNoFlagsLeftFound = true;
                                     isValid = false;
-                                    failedCombinations.push(newCombination);
                                     break;
                                 }
 
                                 andComparer = andComparer << 1n;
+                            }
+
+                            if (includesAll && i === (groupingResults.length - 1) && flagAmount !== totalFlagsLeft) {
+                                isValid = false;
                             }
 
                             if (isValid) {
@@ -695,12 +697,40 @@ function sweep(withGuessing = true, doLog = true, maxAllowedUnknowns = 20) {
                             }
                         });
                     });
-
-                    mergedValidCombinations = newValidCombinations;
                 } else {
-                    mergedValidCombinations = groupingResult.validCombinations;
+                    groupingResult.validCombinations.forEach(combinationToMerge => {
+                        let newCombination = combinationToMerge;
+                        let isValid = true;
+                        let flagAmount = 0;
+                        let andComparer = 1n;
+
+                        for (let i = 0; i < totalNewLength; i++) {
+                            let setAsFlag = (andComparer & newCombination) !== 0n;
+
+                            if (setAsFlag) {
+                                flagAmount += 1;
+                            }
+
+                            if (flagAmount > totalFlagsLeft) {
+                                caseWithNoFlagsLeftFound = true;
+                                isValid = false;
+                                break;
+                            }
+
+                            andComparer = andComparer << 1n;
+                        }
+
+                        if (includesAll && i === (groupingResults.length - 1)  && flagAmount !== totalFlagsLeft) {
+                            isValid = false;
+                        }
+
+                        if (isValid) {
+                            newValidCombinations.push(newCombination);
+                        }
+                    });
                 }
 
+                mergedValidCombinations = newValidCombinations;
 
                 groupingResult.divProbs.forEach(divProb => {
                     mergedCandidates.push(divProb.candidate);
@@ -718,7 +748,7 @@ function sweep(withGuessing = true, doLog = true, maxAllowedUnknowns = 20) {
         };
     }
 
-    function determineGroupingsCombined(field, groupingResults, outsideUnknowns, totalFlagsLeft, resultInfo) {
+    function checkGroupingsCombined(field, groupingResults, outsideUnknowns, totalFlagsLeft, resultInfo) {
         let caseWithNoFlagsLeftFound = false;
         let totalMostBombs = 0;
 
