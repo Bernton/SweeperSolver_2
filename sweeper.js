@@ -7,6 +7,7 @@ let SweepStates = {
 };
 
 let isBoardInteractionEnabled = true;
+let isFindRiddleMode = false;
 
 let AutoSweepConfig = {
     doLog: false,
@@ -53,7 +54,7 @@ function setKeyDownHandler() {
 
                 if (resultState !== SweepStates.solving) {
                     window.stepCertainLocked = true;
-                    setTimeout(() => window.stepCertainLocked = false, 2000);
+                    setTimeout(() => window.stepCertainLocked = false, 1200);
                 }
             }
         } else if (e.code === "KeyS") {
@@ -230,6 +231,11 @@ function sweep(withGuessing = true, doLog = true, maxAllowedUnknowns = 20) {
         let resultInfo = checkAllCombinations(field, maxAllowedUnknowns);
 
         if (resultInfo.certainResultFound) {
+            if (isFindRiddleMode && withGuessing && AutoSweepConfig && AutoSweepConfig.autoSweepEnabled) {
+                AutoSweepConfig.autoSweepEnabled = false;
+                isBoardInteractionEnabled = false;
+            }
+
             return onCheckAllCombinationsCertain(resultInfo);
         }
 
@@ -660,7 +666,6 @@ function sweep(withGuessing = true, doLog = true, maxAllowedUnknowns = 20) {
                     }
 
                     revealDiv(divProb.div);
-                    resultInfo.messages.push(divProb.div);
                 }
             });
 
