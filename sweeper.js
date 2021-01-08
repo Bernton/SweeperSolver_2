@@ -12,7 +12,7 @@ let isFindRiddleMode = false;
 let AutoSweepConfig = {
     doLog: false,
     autoSweepEnabled: false,
-    maxAllowedUnknowns: 60,
+    maxAllowedUnknowns: 9999,
     lastRestState: null,
     baseIdleTime: 0,
     solvingIdleTime: 0,
