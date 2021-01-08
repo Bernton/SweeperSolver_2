@@ -574,52 +574,54 @@ function sweep(withGuessing = true, doLog = true, maxAllowedUnknowns = 20) {
                 for (let flagsToSet = 0; flagsToSet <= clusterSize; flagsToSet++) {
                     let freesToSet = clusterSize - flagsToSet;
 
-                    let isValidZero = true;
+                    let isValidFlagsToSet = true;
 
                     if (freesToSet > 0) {
                         candidate.neighbors.forEach(digitNeighbor => {
-                            if (isValidZero && ((digitNeighbor[node.unknownsI] - freesToSet) + digitNeighbor[node.flagsI]) < digitNeighbor.value) {
-                                isValidZero = false;
+                            if (isValidFlagsToSet && ((digitNeighbor[node.unknownsI] - freesToSet) + digitNeighbor[node.flagsI]) < digitNeighbor.value) {
+                                isValidFlagsToSet = false;
                             }
                         });
                     }
 
-                    let isValidOne = (node.flagsLeft >= flagsToSet);
+                    if (isValidFlagsToSet) {
+                        let isValidFlags = (node.flagsLeft >= flagsToSet);
 
-                    if (isValidOne && flagsToSet > 0) {
-                        candidate.neighbors.forEach(digitNeighbor => {
-                            if (isValidOne && (digitNeighbor[node.flagsI] + flagsToSet) > digitNeighbor.value) {
-                                isValidOne = false;
-                            }
-                        });
-                    }
-
-                    if (isValidZero && isValidOne) {
-                        let newCombination = node.combination.slice(0);
-                        newCombination.push(flagsToSet);
-
-                        if (node.combination.length + 1 < candidates.length) {
-                            let newUnknownsI = node.unknownsI + String(flagsToSet);
-                            let newFlagsI = node.flagsI + String(flagsToSet);
-
-                            digits.forEach(digit => {
-                                digit[newUnknownsI] = digit[node.unknownsI];
-                                digit[newFlagsI] = digit[node.flagsI];
-                            });
-
+                        if (isValidFlags && flagsToSet > 0) {
                             candidate.neighbors.forEach(digitNeighbor => {
-                                digitNeighbor[newUnknownsI] -= clusterSize;
-                                digitNeighbor[newFlagsI] += flagsToSet;
+                                if (isValidFlags && (digitNeighbor[node.flagsI] + flagsToSet) > digitNeighbor.value) {
+                                    isValidFlags = false;
+                                }
                             });
+                        }
 
-                            validCombinationNodes.push({
-                                combination: newCombination,
-                                unknownsI: newUnknownsI,
-                                flagsI: newFlagsI,
-                                flagsLeft: (node.flagsLeft - flagsToSet)
-                            });
-                        } else {
-                            validCombinations.push(newCombination);
+                        if (isValidFlags) {
+                            let newCombination = node.combination.slice(0);
+                            newCombination.push(flagsToSet);
+    
+                            if (node.combination.length + 1 < candidates.length) {
+                                let newUnknownsI = node.unknownsI + String(flagsToSet);
+                                let newFlagsI = node.flagsI + String(flagsToSet);
+    
+                                digits.forEach(digit => {
+                                    digit[newUnknownsI] = digit[node.unknownsI];
+                                    digit[newFlagsI] = digit[node.flagsI];
+                                });
+    
+                                candidate.neighbors.forEach(digitNeighbor => {
+                                    digitNeighbor[newUnknownsI] -= clusterSize;
+                                    digitNeighbor[newFlagsI] += flagsToSet;
+                                });
+    
+                                validCombinationNodes.push({
+                                    combination: newCombination,
+                                    unknownsI: newUnknownsI,
+                                    flagsI: newFlagsI,
+                                    flagsLeft: (node.flagsLeft - flagsToSet)
+                                });
+                            } else {
+                                validCombinations.push(newCombination);
+                            }
                         }
                     }
                 }
