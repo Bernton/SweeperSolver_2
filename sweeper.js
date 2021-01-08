@@ -427,8 +427,6 @@ function sweep(withGuessing = true, doLog = true, maxAllowedUnknowns = 20) {
                 resultInfo.messages.push("Warning: Max reached " + maxReachedAmount + " " + times + ", probabilities not perfect");
             }
 
-
-
             groupings.forEach(grouping => {
                 grouping.forEach(unknown => {
                     unknown.neighbors.forEach(digitNeighbor => {
@@ -491,8 +489,58 @@ function sweep(withGuessing = true, doLog = true, maxAllowedUnknowns = 20) {
             return groupingBorderCellLists;
         }
 
-        function checkGrouping(grouping, groupingFlagsLeft) {
+        function clusterCandidates(candidates) {
+            let clusteredCandidateGroups = [];
 
+            candidates.forEach(candidate => {
+                if (clusteredCandidateGroups.length > 0) {
+                    let belongsToCluster = false;
+
+                    clusteredCandidateGroups.forEach(cluster => {
+                        let isEqual = true;
+                        let toCompare = cluster[0];
+
+                        if (toCompare.neighbors.length === candidate.neighbors.length) {
+                            toCompare.neighbors.forEach(toCompareNeighbor => {
+                                if (!candidate.neighbors.includes(toCompareNeighbor)) {
+                                    isEqual = false;
+                                }
+                            });
+                        } else {
+                            isEqual = false;
+                        }
+
+                        if (isEqual) {
+                            belongsToCluster = true;
+                            cluster.push(candidate);
+                        }
+                    });
+
+                    if (!belongsToCluster) {
+                        clusteredCandidateGroups.push([candidate]);
+                    }
+                } else {
+                    clusteredCandidateGroups.push([candidate]);
+                }
+            });
+
+            let clusteredCandidates = [];
+
+            clusteredCandidateGroups.forEach(candidateGroup => {
+                let clusteredCandidate = candidateGroup[candidateGroup.length - 1];
+                clusteredCandidate.clusterPeers = candidateGroup;
+
+                clusteredCandidate.clusterPeers.forEach(peer => {
+                    peer.clusterSize = candidateGroup.length;
+                });
+
+                clusteredCandidates.push(clusteredCandidate);
+            });
+
+            return clusteredCandidates;
+        }
+
+        function checkGrouping(grouping, groupingFlagsLeft) {
             let groupingResult = {
                 validCombinations: null,
                 leastBombs: null,
@@ -502,7 +550,7 @@ function sweep(withGuessing = true, doLog = true, maxAllowedUnknowns = 20) {
             };
 
             let digits = grouping.digits;
-            let candidates = grouping.unknowns;
+            let candidates = clusterCandidates(grouping.unknowns);
 
             let validCombinations = [];
 
@@ -521,78 +569,57 @@ function sweep(withGuessing = true, doLog = true, maxAllowedUnknowns = 20) {
             while (validCombinationNodes.length > 0) {
                 let node = validCombinationNodes.pop();
                 let candidate = candidates[node.combination.length];
+                let clusterSize = candidate.clusterSize;
 
-                let isValidZero = true;
+                for (let flagsToSet = 0; flagsToSet <= clusterSize; flagsToSet++) {
+                    let freesToSet = clusterSize - flagsToSet;
 
-                candidate.neighbors.forEach(digitNeighbor => {
-                    if (isValidZero && ((digitNeighbor[node.unknownsI] - 1) + digitNeighbor[node.flagsI]) < digitNeighbor.value) {
-                        isValidZero = false;
-                    }
-                });
+                    let isValidZero = true;
 
-                if (isValidZero) {
-                    let newZeroCombination = node.combination.slice(0);
-                    newZeroCombination.push(false);
-
-                    if (node.combination.length + 1 < candidates.length) {
-                        let newZeroUnknownsI = node.unknownsI + "0";
-                        let newZeroFlagsI = node.flagsI + "0";
-
-                        digits.forEach(digit => {
-                            digit[newZeroUnknownsI] = digit[node.unknownsI];
-                            digit[newZeroFlagsI] = digit[node.flagsI];
-                        });
-
+                    if (freesToSet > 0) {
                         candidate.neighbors.forEach(digitNeighbor => {
-                            digitNeighbor[newZeroUnknownsI] -= 1;
+                            if (isValidZero && ((digitNeighbor[node.unknownsI] - freesToSet) + digitNeighbor[node.flagsI]) < digitNeighbor.value) {
+                                isValidZero = false;
+                            }
                         });
-
-                        validCombinationNodes.push({
-                            combination: newZeroCombination,
-                            unknownsI: newZeroUnknownsI,
-                            flagsI: newZeroFlagsI,
-                            flagsLeft: node.flagsLeft
-                        });
-                    } else {
-                        validCombinations.push(newZeroCombination);
                     }
-                }
 
-                if (node.flagsLeft >= 1) {
-                    let isValidOne = true;
+                    let isValidOne = (node.flagsLeft >= flagsToSet);
 
-                    candidate.neighbors.forEach(digitNeighbor => {
-                        if (isValidOne && (digitNeighbor[node.flagsI] + 1) > digitNeighbor.value) {
-                            isValidOne = false;
-                        }
-                    });
+                    if (isValidOne && flagsToSet > 0) {
+                        candidate.neighbors.forEach(digitNeighbor => {
+                            if (isValidOne && (digitNeighbor[node.flagsI] + flagsToSet) > digitNeighbor.value) {
+                                isValidOne = false;
+                            }
+                        });
+                    }
 
-                    if (isValidOne) {
-                        let newOneCombination = node.combination.slice(0);
-                        newOneCombination.push(true);
+                    if (isValidZero && isValidOne) {
+                        let newCombination = node.combination.slice(0);
+                        newCombination.push(flagsToSet);
 
                         if (node.combination.length + 1 < candidates.length) {
-                            let newOneUnknownsI = node.unknownsI + "1";
-                            let newOneFlagsI = node.flagsI + "1";
+                            let newUnknownsI = node.unknownsI + String(flagsToSet);
+                            let newFlagsI = node.flagsI + String(flagsToSet);
 
                             digits.forEach(digit => {
-                                digit[newOneUnknownsI] = digit[node.unknownsI];
-                                digit[newOneFlagsI] = digit[node.flagsI];
+                                digit[newUnknownsI] = digit[node.unknownsI];
+                                digit[newFlagsI] = digit[node.flagsI];
                             });
 
                             candidate.neighbors.forEach(digitNeighbor => {
-                                digitNeighbor[newOneUnknownsI] -= 1;
-                                digitNeighbor[newOneFlagsI] += 1;
+                                digitNeighbor[newUnknownsI] -= clusterSize;
+                                digitNeighbor[newFlagsI] += flagsToSet;
                             });
 
                             validCombinationNodes.push({
-                                combination: newOneCombination,
-                                unknownsI: newOneUnknownsI,
-                                flagsI: newOneFlagsI,
-                                flagsLeft: node.flagsLeft - 1
+                                combination: newCombination,
+                                unknownsI: newUnknownsI,
+                                flagsI: newFlagsI,
+                                flagsLeft: (node.flagsLeft - flagsToSet)
                             });
                         } else {
-                            validCombinations.push(newOneCombination);
+                            validCombinations.push(newCombination);
                         }
                     }
                 }
@@ -609,19 +636,34 @@ function sweep(withGuessing = true, doLog = true, maxAllowedUnknowns = 20) {
         }
 
         function searchCertainResult(candidates, groupingResult, groupingFlagsLeft) {
-            let occurencesOfOnes = Array(candidates.length).fill(0);
+            let occurencesValues = Array(candidates.length).fill(0);
+            let occurenceCounts = [];
+            let totalOccurences = 0;
+
             let leastBombs = candidates.length;
             let mostBombs = 0;
 
             groupingResult.validCombinations.forEach(validCombination => {
+                let occurenceCount = 1;
                 let bombs = 0;
 
-                validCombination.forEach((isFlag, j) => {
-                    if (isFlag) {
-                        bombs += 1;
-                        occurencesOfOnes[j] += 1;
+                validCombination.forEach((flagValue, j) => {
+                    let clusterSize = candidates[j].clusterSize;
+
+                    if (clusterSize > 1) {
+                        let combinationAmount = combinations(clusterSize, flagValue);
+                        occurenceCount *= combinationAmount;
                     }
+
+                    bombs += flagValue;
                 });
+
+                validCombination.forEach((flagValue, j) => {
+                    occurencesValues[j] += ((flagValue / candidates[j].clusterSize) * occurenceCount);
+                });
+
+                occurenceCounts.push(occurenceCount);
+                totalOccurences += occurenceCount;
 
                 leastBombs = Math.min(leastBombs, bombs);
                 mostBombs = Math.max(mostBombs, bombs);
@@ -642,16 +684,16 @@ function sweep(withGuessing = true, doLog = true, maxAllowedUnknowns = 20) {
                 });
             }
 
-            let fractionOfOnes = occurencesOfOnes.map(c => c / groupingResult.validCombinations.length);
-            let percentOfOnes = occurencesOfOnes.map(c => (c / groupingResult.validCombinations.length * 100.0).toFixed(1) + "%");
+            let fractionOfFlag = occurencesValues.map(c => c / totalOccurences);
+            let percentOfFlag = occurencesValues.map(c => (c / totalOccurences * 100.0).toFixed(1) + "%");
             let divProbs = [];
 
             candidates.forEach((candidate, i) => {
                 divProbs.push({
                     div: candidate.div,
-                    percentage: percentOfOnes[i],
-                    fraction: fractionOfOnes[i],
-                    score: fractionOfOnes[i],
+                    percentage: percentOfFlag[i],
+                    fraction: fractionOfFlag[i],
+                    score: fractionOfFlag[i],
                     candidate: candidate
                 });
             });
@@ -665,7 +707,9 @@ function sweep(withGuessing = true, doLog = true, maxAllowedUnknowns = 20) {
                         anyZeroPercent = true;
                     }
 
-                    revealDiv(divProb.div);
+                    divProb.candidate.clusterPeers.forEach(peer => {
+                        revealDiv(peer.div);
+                    });
                 }
             });
 
@@ -681,7 +725,10 @@ function sweep(withGuessing = true, doLog = true, maxAllowedUnknowns = 20) {
                             flagsFound = true;
                         }
 
-                        flagDiv(divProb.div);
+                        divProb.candidate.clusterPeers.forEach(peer => {
+                            flagDiv(peer.div);
+                        });
+
                         resultInfo.messages.push(divProb.div);
                     }
                 });
@@ -775,11 +822,9 @@ function sweep(withGuessing = true, doLog = true, maxAllowedUnknowns = 20) {
                 let flagAmount = 0;
 
                 for (let i = 0; i < newCombination.length; i++) {
-                    let setAsFlag = newCombination[i];
+                    let combFlagAmount = newCombination[i];
 
-                    if (setAsFlag) {
-                        flagAmount += 1;
-                    }
+                    flagAmount += combFlagAmount;
 
                     if (flagAmount > totalFlagsLeft) {
                         mergeResult.caseWithNoFlagsLeftFound = true;
@@ -826,6 +871,29 @@ function sweep(withGuessing = true, doLog = true, maxAllowedUnknowns = 20) {
         }
 
         function handleNoCertainResultFound(divProbs) {
+
+            let unclusteredDivProbs = [];
+
+            divProbs.forEach(divProb => {
+                if (divProb.candidate.clusterSize > 1) {
+                    divProb.candidate.clusterPeers.forEach(peer => {
+                        let newDivProb = {
+                            div: peer.div,
+                            percentage: divProb.percentage,
+                            fraction: divProb.fraction,
+                            score: divProb.fraction,
+                            candidate: peer
+                        };
+
+                        unclusteredDivProbs.push(newDivProb);
+                    });
+                } else {
+                    unclusteredDivProbs.push(divProb);
+                }
+            });
+
+            divProbs = unclusteredDivProbs;
+
             if (outsideUnknowns.length > 0) {
                 let averageFlagsInBorder = 0;
 
@@ -911,6 +979,10 @@ function sweep(withGuessing = true, doLog = true, maxAllowedUnknowns = 20) {
 
                     if (divProb.isOutside) {
                         message += " - Outsider";
+                    }
+
+                    if (divProb.candidate.clusterSize > 1) {
+                        message += " - Cluster";
                     }
 
                     resultInfo.messages.push(message);
