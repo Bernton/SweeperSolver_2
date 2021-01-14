@@ -12,13 +12,11 @@ let isFindRiddleMode = false;
 let AutoSweepConfig = {
     doLog: false,
     autoSweepEnabled: false,
-    maxAllowedUnknowns: 9999,
     lastRestState: null,
     baseIdleTime: 0,
     solvingIdleTime: 0,
     newGameStateIdleTime: 0,
-    restDefaultIdleTime: 0,
-    restIdleTimes: { start: null, stuck: null, solved: null, death: null }
+    restDefaultIdleTime: 0
 };
 
 let AutoSweepStats = {
@@ -72,17 +70,17 @@ function setKeyDownHandler() {
 }
 
 function sweepStep() {
-    sweep(true, AutoSweepConfig.doLog, AutoSweepConfig.maxAllowedUnknowns);
+    sweep(true, AutoSweepConfig.doLog);
 }
 
 function sweepStepCertain() {
-    return sweep(false, AutoSweepConfig.doLog, AutoSweepConfig.maxAllowedUnknowns);
+    return sweep(false, AutoSweepConfig.doLog);
 }
 
-function startAutoSweep(withAutoSolve = true, timingOptions = AutoSweepConfig) {
+function startAutoSweep(withAutoSolve = true, config = AutoSweepConfig) {
     isBoardInteractionEnabled = true;
-    AutoSweepConfig.autoSweepEnabled = true;
-    setTimeout(() => autoSweep(withAutoSolve, timingOptions), 0);
+    config.autoSweepEnabled = true;
+    setTimeout(() => autoSweep(withAutoSolve, config), 0);
 }
 
 function stopAutoSweep() {
@@ -137,7 +135,7 @@ function updateStateCounts() {
 }
 
 function autoSweep(withAutoSolve = true, config = AutoSweepConfig) {
-    if (AutoSweepConfig.autoSweepEnabled) {
+    if (config.autoSweepEnabled) {
         let idleTime = 0;
 
         if (lastWasNewGameState(config) && withAutoSolve) {
@@ -145,7 +143,7 @@ function autoSweep(withAutoSolve = true, config = AutoSweepConfig) {
             startNewGame();
         }
         else {
-            let state = sweep(withAutoSolve, config.doLog, config.maxAllowedUnknowns);
+            let state = sweep(withAutoSolve, config.doLog);
             let stateIdleTime = 0;
 
             if (state === SweepStates.solving) {
@@ -156,8 +154,7 @@ function autoSweep(withAutoSolve = true, config = AutoSweepConfig) {
                     stateIdleTime = config.newGameStateIdleTime;
                 }
                 else {
-                    let specificIdleTime = config.restIdleTimes[state];
-                    stateIdleTime = specificIdleTime !== null ? specificIdleTime : config.restDefaultIdleTime;
+                    stateIdleTime = config.restDefaultIdleTime;
                 }
 
                 if (!config.lastRestState || config.lastRestState !== state) {
@@ -189,7 +186,7 @@ function autoSweep(withAutoSolve = true, config = AutoSweepConfig) {
     }
 }
 
-function sweep(withGuessing = true, doLog = true, maxAllowedUnknowns = 20) {
+function sweep(withGuessing = true, doLog = true) {
 
     let interactions = [];
 
@@ -228,10 +225,12 @@ function sweep(withGuessing = true, doLog = true, maxAllowedUnknowns = 20) {
             return onStandardSolving("[2] Check digits flag combinations");
         }
 
-        let resultInfo = checkAllCombinations(field, maxAllowedUnknowns);
+        let resultInfo = checkAllCombinations(field);
 
         if (resultInfo.certainResultFound) {
-            if (isFindRiddleMode && withGuessing && AutoSweepConfig && AutoSweepConfig.autoSweepEnabled) {
+            let sweepEnabled = AutoSweepConfig && AutoSweepConfig.autoSweepEnabled;
+
+            if (sweepEnabled && withGuessing && isFindRiddleMode) {
                 AutoSweepConfig.autoSweepEnabled = false;
                 isBoardInteractionEnabled = false;
             }
@@ -319,7 +318,7 @@ function sweep(withGuessing = true, doLog = true, maxAllowedUnknowns = 20) {
         return revealsFound;
     }
 
-    function checkAllCombinations(field, maxAllowedUnknowns) {
+    function checkAllCombinations(field) {
         let resultInfo = {
             certainResultFound: false,
             messages: []
@@ -372,14 +371,12 @@ function sweep(withGuessing = true, doLog = true, maxAllowedUnknowns = 20) {
         function splitToBorderCellGroupingsAndSort(borderCellLists) {
             let borderCells = borderCellLists.digits.concat(borderCellLists.unknowns);
             let groupings = [];
-            let maxReachedAmount = 0;
             let newGroupingFound = false;
 
             borderCells.forEach(cell => cell.groupingIndex = null);
 
             do {
                 let grouping = [];
-                let maxReachedIncremented = false;
 
                 let startCell = borderCells.find(borderCell => borderCell.groupingIndex === null);
 
@@ -395,16 +392,11 @@ function sweep(withGuessing = true, doLog = true, maxAllowedUnknowns = 20) {
                                 unknownsMarked += 1;
                             }
 
-                            if (unknownsMarked <= maxAllowedUnknowns) {
-                                cell.groupingIndex = index;
-                                grouping.push(cell);
-                                cell.neighbors.forEach(neighbor => {
-                                    addToGrouping(neighbor, index);
-                                });
-                            } else if (!maxReachedIncremented) {
-                                maxReachedAmount += 1;
-                                maxReachedIncremented = true;
-                            }
+                            cell.groupingIndex = index;
+                            grouping.push(cell);
+                            cell.neighbors.forEach(neighbor => {
+                                addToGrouping(neighbor, index);
+                            });
                         }
                     };
 
@@ -421,11 +413,6 @@ function sweep(withGuessing = true, doLog = true, maxAllowedUnknowns = 20) {
                 }
 
             } while (newGroupingFound);
-
-            if (maxReachedAmount > 0) {
-                let times = (maxReachedAmount > 1) ? "times" : "time";
-                resultInfo.messages.push("Warning: Max reached " + maxReachedAmount + " " + times + ", probabilities not perfect");
-            }
 
             groupings.forEach(grouping => {
                 grouping.forEach(unknown => {
@@ -598,21 +585,21 @@ function sweep(withGuessing = true, doLog = true, maxAllowedUnknowns = 20) {
                         if (isValidFlags) {
                             let newCombination = node.combination.slice(0);
                             newCombination.push(flagsToSet);
-    
+
                             if (node.combination.length + 1 < candidates.length) {
                                 let newUnknownsI = node.unknownsI + String(flagsToSet);
                                 let newFlagsI = node.flagsI + String(flagsToSet);
-    
+
                                 digits.forEach(digit => {
                                     digit[newUnknownsI] = digit[node.unknownsI];
                                     digit[newFlagsI] = digit[node.flagsI];
                                 });
-    
+
                                 candidate.neighbors.forEach(digitNeighbor => {
                                     digitNeighbor[newUnknownsI] -= clusterSize;
                                     digitNeighbor[newFlagsI] += flagsToSet;
                                 });
-    
+
                                 validCombinationNodes.push({
                                     combination: newCombination,
                                     unknownsI: newUnknownsI,
