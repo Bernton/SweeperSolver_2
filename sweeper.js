@@ -3,20 +3,19 @@ let SweepStates = {
     solving: "solving",
     stuck: "stuck",
     solved: "solved",
-    death: "death",
+    death: "death"
 };
-
-let isBoardInteractionEnabled = true;
-let isFindRiddleMode = false;
 
 let AutoSweepConfig = {
     doLog: false,
-    autoSweepEnabled: false,
-    lastRestState: null,
+    isAutoSweepEnabled: false,
+    isRiddleFinderMode: false,
+    isBoardInteractionEnabled: true,
     baseIdleTime: 0,
     solvingIdleTime: 0,
     newGameStateIdleTime: 0,
-    restDefaultIdleTime: 0
+    restDefaultIdleTime: 0,
+    lastRestState: null
 };
 
 let AutoSweepStats = {
@@ -33,6 +32,8 @@ let AutoSweepStats = {
 disableEndOfGamePrompt();
 setKeyDownHandler();
 
+
+
 function disableEndOfGamePrompt() {
     prompt = () => "cancel";
 }
@@ -44,68 +45,97 @@ function setKeyDownHandler() {
     }
 
     function keyDownHandler(e) {
-        if (e.code === "KeyW") {
-            sweepStep();
-        } else if (e.code === "KeyE") {
-            if (!window.stepCertainLocked) {
-                let resultState = sweepStepCertain();
-
-                if (resultState !== SweepStates.solving) {
-                    window.stepCertainLocked = true;
-                    setTimeout(() => window.stepCertainLocked = false, 1200);
-                }
-            }
-        } else if (e.code === "KeyS") {
+        if (e.key === "w") {
+            sweepStepGuessing(true);
+        } else if (e.key === "e") {
+            sweepStepCertain(true);
+        } else if (e.key === "W") {
+            sweepStepGuessing(false);
+        } else if (e.key === "E") {
+            sweepStepCertain(false);
+        } else if (e.key === "s") {
             startAutoSweep();
-        } else if (e.code === "KeyD") {
+        } else if (e.key === "d") {
             stopAutoSweep();
-        } else if (e.code === "KeyI") {
+        } else if (e.key === "i") {
             formatLogAutoSweepStats();
-        } else if (e.code === "KeyK") {
-            resetAutoSweepResults();
-        } else if (e.code === "KeyL") {
+        } else if (e.key === "k") {
+            resetAutoSweepStats();
+        } else if (e.key === "l") {
             toggleDoLog();
         }
     }
 }
 
-function sweepStep() {
-    sweep(true, AutoSweepConfig.doLog);
+function sweepStepCertain(withBoardInteraction) {
+    sweepStep(withBoardInteraction, false, ("lastForSweepStepCertain" + withBoardInteraction));
 }
 
-function sweepStepCertain() {
-    return sweep(false, AutoSweepConfig.doLog);
+function sweepStepGuessing(withBoardInteraction) {
+    sweepStep(withBoardInteraction, true, ("lastForSweepStepGuessing" + withBoardInteraction));
 }
 
-function startAutoSweep(withAutoSolve = true, config = AutoSweepConfig) {
-    isBoardInteractionEnabled = true;
-    config.autoSweepEnabled = true;
-    setTimeout(() => autoSweep(withAutoSolve, config), 0);
+function sweepStep(withBoardInteraction, withGuessing, lastStatePropName) {
+    let boardState = getBoardState();
+
+    if (window[lastStatePropName] !== boardState) {
+        let sweepResult = sweep(withGuessing, true);
+        executeInteractions(sweepResult.interactions, withBoardInteraction);
+        window[lastStatePropName] = boardState;
+    }
+
+    function getBoardState() {
+        let boardState = "";
+        let squares = document.getElementsByClassName('square');
+
+        for (let i = 0; i < squares.length; i++) {
+            if (squares[i].style.display !== 'none') {
+                boardState += squares[i].className;
+            }
+        }
+
+        return boardState;
+    }
 }
 
-function stopAutoSweep() {
-    AutoSweepConfig.autoSweepEnabled = false;
+function startAutoSweep(config = AutoSweepConfig, stats = AutoSweepStats) {
+    config.isAutoSweepEnabled = true;
+    setTimeout(() => autoSweep(config, stats), 0);
 }
 
-function formatLogAutoSweepStats(index) {
+function stopAutoSweep(config = AutoSweepConfig) {
+    config.isAutoSweepEnabled = false;
+}
+
+function formatLogAutoSweepStats(index, stats = AutoSweepStats) {
     let isCurrent = (typeof index === "undefined");
     let stateCount;
 
     if (isCurrent) {
-        stateCount = AutoSweepStats.currentStateCounts;
-        index = AutoSweepStats.stateCounts.length;
+        stateCount = stats.currentStateCounts;
+        index = stats.stateCounts.length;
     } else {
-        stateCount = AutoSweepStats.stateCounts[index];
+        stateCount = stats.stateCounts[index];
     }
 
     let solved = stateCount[SweepStates.solved];
     let death = stateCount[SweepStates.death];
-    let winPercentage = (solved / (solved + death) * 100);
-    console.log("[" + index + "] " + "Solved: " + (winPercentage.toFixed(2)) + "% " + solved + ":" + death);
+    let total = solved + death;
+    let winPercentage = (solved / total * 100);
+    console.log("[" + index + "] " + "Solved: " + (winPercentage.toFixed(2)) + "% (" + solved + "/" + total + ")");
 }
 
-function toggleDoLog() {
-    AutoSweepConfig.doLog = !AutoSweepConfig.doLog;
+function resetAutoSweepStats(stats = AutoSweepStats) {
+    stats.currentStateCounts.start = 0;
+    stats.currentStateCounts.solving = 0;
+    stats.currentStateCounts.stuck = 0;
+    stats.currentStateCounts.solved = 0;
+    stats.currentStateCounts.death = 0;
+    stats.stateCounts = [];
+}
+
+function toggleDoLog(config = AutoSweepConfig) {
+    config.doLog = !config.doLog;
 }
 
 function startNewGame() {
@@ -113,19 +143,10 @@ function startNewGame() {
     simulate(document.getElementById('face'), "mouseup");
 }
 
-function resetAutoSweepResults() {
-    AutoSweepStats.currentStateCounts.start = 0;
-    AutoSweepStats.currentStateCounts.solving = 0;
-    AutoSweepStats.currentStateCounts.stuck = 0;
-    AutoSweepStats.currentStateCounts.solved = 0;
-    AutoSweepStats.currentStateCounts.death = 0;
-    AutoSweepStats.stateCounts = [];
-}
-
-function updateStateCounts() {
-    let stateCounts = AutoSweepStats.currentStateCounts;
-    AutoSweepStats.stateCounts.push(stateCounts);
-    AutoSweepStats.currentStateCounts = {
+function updateStateCounts(stats) {
+    let stateCounts = stats.currentStateCounts;
+    stats.stateCounts.push(stateCounts);
+    stats.currentStateCounts = {
         start: stateCounts.start,
         solving: stateCounts.solving,
         stuck: stateCounts.stuck,
@@ -134,46 +155,57 @@ function updateStateCounts() {
     };
 }
 
-function autoSweep(withAutoSolve = true, config = AutoSweepConfig) {
-    if (config.autoSweepEnabled) {
+function autoSweep(config, stats) {
+    if (config.isAutoSweepEnabled) {
         let idleTime = 0;
 
-        if (lastWasNewGameState(config) && withAutoSolve) {
+        if (lastWasNewGameState(config)) {
             config.lastRestState = null;
             startNewGame();
         }
         else {
-            let state = sweep(withAutoSolve, config.doLog);
-            let stateIdleTime = 0;
+            let sweepResult = sweep(true, config.doLog);
+            let interactions = sweepResult.interactions;
+            let isRiddle = config.isRiddleFinderMode && sweepResult.solver === "3";
 
-            if (state === SweepStates.solving) {
-                stateIdleTime = config.solvingIdleTime;
-                AutoSweepStats.currentStateCounts[state] += 1;
-            } else {
-                if (isNewGameState(state) && config.newGameStateIdleTime !== null) {
-                    stateIdleTime = config.newGameStateIdleTime;
-                }
-                else {
-                    stateIdleTime = config.restDefaultIdleTime;
-                }
+            if (isRiddle) {
+                config.isAutoSweepEnabled = false;
+            }
+            else {
+                let state = sweepResult.state;
+                let stateIdleTime = 0;
 
-                if (!config.lastRestState || config.lastRestState !== state) {
-                    AutoSweepStats.currentStateCounts[state] += 1;
-
-                    if (isNewGameState(state)) {
-                        updateStateCounts();
+                if (state === SweepStates.solving) {
+                    stateIdleTime = config.solvingIdleTime;
+                    stats.currentStateCounts[state] += 1;
+                } else {
+                    if (isNewGameState(state) && config.newGameStateIdleTime !== null) {
+                        stateIdleTime = config.newGameStateIdleTime;
                     }
+                    else {
+                        stateIdleTime = config.restDefaultIdleTime;
+                    }
+
+                    if (!config.lastRestState || config.lastRestState !== state) {
+                        stats.currentStateCounts[state] += 1;
+
+                        if (isNewGameState(state)) {
+                            updateStateCounts(stats);
+                        }
+                    }
+
+                    config.lastRestState = state;
                 }
 
-                config.lastRestState = state;
+                idleTime = stateIdleTime;
             }
 
-            idleTime = stateIdleTime;
+            executeInteractions(interactions, !isRiddle);
         }
 
-        if (config.autoSweepEnabled) {
+        if (config.isAutoSweepEnabled) {
             let timeOutTime = (idleTime + config.baseIdleTime);
-            setTimeout(() => autoSweep(withAutoSolve, config), timeOutTime);
+            setTimeout(() => autoSweep(config, stats), timeOutTime);
         }
     }
 
@@ -186,14 +218,41 @@ function autoSweep(withAutoSolve = true, config = AutoSweepConfig) {
     }
 }
 
-function sweep(withGuessing = true, doLog = true) {
+function executeInteractions(interactions, isBoardInteractionEnabled) {
+    if (!isBoardInteractionEnabled) {
+        console.log("Interations:");
+    }
 
+    if (interactions.length > 0) {
+        interactions.forEach(interaction => {
+            if (isBoardInteractionEnabled) {
+                if (interaction.isFlag) {
+                    if (interaction.div.classList.value !== "square bombflagged") {
+                        simulate(interaction.div, "mousedown", 2);
+                        simulate(interaction.div, "mouseup", 2);
+                    }
+                } else {
+                    simulate(interaction.div, "mouseup");
+                }
+            } else {
+                console.log("-> " + (interaction.isFlag ? "Flag" : "Reveal") + ":", interaction.div);
+            }
+        });
+    } else if (!isBoardInteractionEnabled) {
+        console.log("-> None");
+    }
+}
+
+function sweep(withGuessing = true, doLog = true) {
     let interactions = [];
 
     return (function main() {
         let checkResult = checkForInteractions();
-        executeInteractions();
-        return checkResult;
+        return {
+            interactions: interactions,
+            state: checkResult.state,
+            solver: checkResult.solver
+        };
     })();
 
     function checkForInteractions() {
@@ -212,29 +271,22 @@ function sweep(withGuessing = true, doLog = true) {
         }
 
         if (determineTrivialFlags(field) || determineTrivialReveals(field)) {
-            return onStandardSolving("[0] Trivial cases");
+            return onStandardSolving("0", "[0] Trivial cases");
         }
 
         let borderCells = getBorderCells(field);
 
         if (determineSuffocations(field, borderCells)) {
-            return onStandardSolving("[1] Suffocations");
+            return onStandardSolving("1", "[1] Suffocations");
         }
 
         if (checkDigitsFlagCombinations(field, borderCells)) {
-            return onStandardSolving("[2] Check digits flag combinations");
+            return onStandardSolving("2", "[2] Check digits flag combinations");
         }
 
         let resultInfo = checkAllCombinations(field);
 
         if (resultInfo.certainResultFound) {
-            let sweepEnabled = AutoSweepConfig && AutoSweepConfig.autoSweepEnabled;
-
-            if (sweepEnabled && withGuessing && isFindRiddleMode) {
-                AutoSweepConfig.autoSweepEnabled = false;
-                isBoardInteractionEnabled = false;
-            }
-
             return onCheckAllCombinationsCertain(resultInfo);
         }
 
@@ -249,9 +301,16 @@ function sweep(withGuessing = true, doLog = true) {
         return document.getElementsByClassName('square bombdeath').length > 0;
     }
 
+    function createCheckResult(state, solver = null) {
+        return {
+            state: state,
+            solver: solver
+        };
+    }
+
     function onBombDeath() {
         log("[x] Bomb death");
-        return SweepStates.death;
+        return createCheckResult(SweepStates.death);
     }
 
     function log() {
@@ -262,28 +321,29 @@ function sweep(withGuessing = true, doLog = true) {
 
     function onCheckAllCombinationsCertain(resultInfo) {
         let message = "Check all combinations";
-        return onCheckAllCombinations(resultInfo, message, "[3]", SweepStates.solving);
+        return onCheckAllCombinations(resultInfo, message, "3", SweepStates.solving);
     }
 
     function onCheckAllCombinationsGuessing(resultInfo) {
         let message = "Check all combinations - guessing";
-        return onCheckAllCombinations(resultInfo, message, "[3g]", SweepStates.solving);
+        return onCheckAllCombinations(resultInfo, message, "3g", SweepStates.solving);
     }
 
     function onCheckAllCombinationsStuck(resultInfo) {
         let message = "Check all combinations - stuck";
-        return onCheckAllCombinations(resultInfo, message, "[3s]", SweepStates.stuck);
+        return onCheckAllCombinations(resultInfo, message, "3s", SweepStates.stuck);
     }
 
-    function onCheckAllCombinations(resultInfo, message, prefix, resultState) {
-        log(prefix, message);
-        resultInfo.messages.forEach(c => { log("->", prefix, c); });
-        return resultState;
+    function onCheckAllCombinations(resultInfo, message, solver, resultState) {
+        let formatSolver = "[" + solver + "]";
+        log(formatSolver, message);
+        resultInfo.messages.forEach(c => { log("->", formatSolver, c); });
+        return createCheckResult(resultState, solver);
     }
 
-    function onStandardSolving(message) {
+    function onStandardSolving(solver, message) {
         log(message);
-        return SweepStates.solving;
+        return createCheckResult(SweepStates.solving, solver);
     }
 
     function onStart(field) {
@@ -293,12 +353,12 @@ function sweep(withGuessing = true, doLog = true) {
             revealDiv(field[Math.round(field.length / 2)][Math.round(field[0].length / 2)].div);
         }
 
-        return SweepStates.start;
+        return createCheckResult(SweepStates.start);
     }
 
     function onSolved() {
         log("[o]", SweepStates.solved);
-        return SweepStates.solved;
+        return createCheckResult(SweepStates.solved);
     }
 
     function determineTrivialReveals(field) {
@@ -1303,31 +1363,6 @@ function sweep(withGuessing = true, doLog = true) {
         }
     }
 
-    function executeInteractions() {
-        if (!isBoardInteractionEnabled) {
-            console.log("Interations:");
-        }
-
-        if (interactions.length > 0) {
-            interactions.forEach(interaction => {
-                if (isBoardInteractionEnabled) {
-                    if (interaction.isFlag) {
-                        if (interaction.div.classList.value !== "square bombflagged") {
-                            simulate(interaction.div, "mousedown", 2);
-                            simulate(interaction.div, "mouseup", 2);
-                        }
-                    } else {
-                        simulate(interaction.div, "mouseup");
-                    }
-                } else {
-                    console.log("-> " + (interaction.isFlag ? "Flag" : "Reveal") + ":", interaction.div);
-                }
-            });
-        } else if (!isBoardInteractionEnabled) {
-            console.log("No interactions found.");
-        }
-    }
-
     function determineTrivialFlags(field) {
         let flagsFound = false;
 
@@ -1526,18 +1561,23 @@ function simulate(element, eventName, mouseButton) {
 
 function combinations(n, k) {
     return factorial(n) / (factorial(k) * factorial(n - k));
-}
 
-let factorialCache = [];
+    function factorial(n) {
+        if (!window.factorialCache) {
+            window.factorialCache = [];
+        }
 
-function factorial(n) {
-    if (n === 0 || n === 1) {
-        return 1;
+        let cache = window.factorialCache;
+
+        if (n === 0 || n === 1) {
+            return 1;
+        }
+
+        if (cache[n] > 0) {
+            return cache[n];
+        }
+
+        cache[n] = factorial(n - 1) * n;
+        return cache[n];
     }
-    if (factorialCache[n] > 0) {
-        return factorialCache[n];
-    }
-
-    factorialCache[n] = factorial(n - 1) * n;
-    return factorialCache[n];
 }
