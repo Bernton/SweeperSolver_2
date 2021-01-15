@@ -10,11 +10,11 @@ let AutoSweepConfig = {
     doLog: false,
     isAutoSweepEnabled: false,
     isRiddleFinderMode: false,
-    isBoardInteractionEnabled: true,
     baseIdleTime: 0,
     solvingIdleTime: 0,
     newGameStateIdleTime: 0,
     restDefaultIdleTime: 0,
+    gameId: 0,
     lastRestState: null
 };
 
@@ -45,24 +45,17 @@ function setKeyDownHandler() {
     }
 
     function keyDownHandler(e) {
-        if (e.key === "w") {
-            sweepStepGuessing(true);
-        } else if (e.key === "e") {
-            sweepStepCertain(true);
-        } else if (e.key === "W") {
-            sweepStepGuessing(false);
-        } else if (e.key === "E") {
-            sweepStepCertain(false);
-        } else if (e.key === "s") {
-            startAutoSweep();
-        } else if (e.key === "d") {
-            stopAutoSweep();
-        } else if (e.key === "i") {
-            formatLogAutoSweepStats();
-        } else if (e.key === "k") {
-            resetAutoSweepStats();
-        } else if (e.key === "l") {
-            toggleDoLog();
+        switch (e.key) {
+            case "w": sweepStepGuessing(true); break;
+            case "W": sweepStepGuessing(false); break;
+            case "e": sweepStepCertain(true); break;
+            case "E": sweepStepCertain(false); break;
+            case "s": startAutoSweep(); break;
+            case "d": stopAutoSweep(); break;
+            case "i": formatLogAutoSweepStats(); break;
+            case "o": formatLogGameTimeStats(); break;
+            case "k": resetAutoSweepStats(); break;
+            case "l": toggleDoLog(); break;
         }
     }
 }
@@ -118,11 +111,62 @@ function formatLogAutoSweepStats(index, stats = AutoSweepStats) {
         stateCount = stats.stateCounts[index];
     }
 
-    let solved = stateCount[SweepStates.solved];
-    let death = stateCount[SweepStates.death];
-    let total = solved + death;
-    let winPercentage = (solved / total * 100);
-    console.log("[" + index + "] " + "Solved: " + (winPercentage.toFixed(2)) + "% (" + solved + "/" + total + ")");
+    logFormatted(stateCount);
+
+    function logFormatted(stateCount) {
+        let solved = stateCount[SweepStates.solved];
+        let death = stateCount[SweepStates.death];
+        let total = solved + death;
+        let winPercentage = (solved / total * 100);
+        console.log("[" + index + "] " + "Solved: " + (winPercentage.toFixed(2)) + "% (" + solved + "/" + total + ")");
+    }
+}
+
+function formatLogGameTimeStats() {
+    let sweepTimes = window.sweepTimes;
+
+    if (!sweepTimes) {
+        return;
+    }
+
+    let gameTimeStats = sweepTimes.map(mapStats);
+    let gameStats = mapStats(gameTimeStats.map(c => c.sum));
+
+    console.log("Stats for all games:", gameStats);
+    console.log("Stats per data:", gameTimeStats);
+
+    function mapStats(values) {
+        return {
+            min: min(values),
+            max: max(values),
+            average: average(values),
+            median: median(values),
+            sum: sum(values),
+            values: values
+        };
+    }
+
+    function sum(values) {
+        return values.reduce((a, b) => a + b);
+    }
+
+    function min(values) {
+        return values.reduce((a, b) => Math.min(a, b));
+    }
+
+    function max(values) {
+        return values.reduce((a, b) => Math.max(a, b));
+    }
+
+    function average(values) {
+        return sum(values) / values.length;
+    }
+
+    function median(values) {
+        let sortedValues = values.slice(0).sort((a, b) => a - b);
+        let half = Math.floor(sortedValues.length / 2);
+        return (values.length % 2) ? values[half] : ((values[half - 1] + values[half]) / 2.0);
+    }
 }
 
 function resetAutoSweepStats(stats = AutoSweepStats) {
@@ -138,7 +182,9 @@ function toggleDoLog(config = AutoSweepConfig) {
     config.doLog = !config.doLog;
 }
 
-function startNewGame() {
+function startNewGame(config = AutoSweepConfig) {
+    config.lastRestState = null;
+    config.gameId += 1;
     simulate(document.getElementById('face'), "mousedown");
     simulate(document.getElementById('face'), "mouseup");
 }
@@ -156,57 +202,75 @@ function updateStateCounts(stats) {
 }
 
 function autoSweep(config, stats) {
-    if (config.isAutoSweepEnabled) {
-        let idleTime = 0;
+    if (!config.isAutoSweepEnabled) {
+        return;
+    }
 
-        if (lastWasNewGameState(config)) {
-            config.lastRestState = null;
-            startNewGame();
-        }
-        else {
-            let sweepResult = sweep(true, config.doLog);
-            let interactions = sweepResult.interactions;
-            let isRiddle = config.isRiddleFinderMode && sweepResult.solver === "3";
+    let idleTime;
+    let restartNeeded = lastWasNewGameState(config);
 
-            if (isRiddle) {
-                config.isAutoSweepEnabled = false;
-            }
-            else {
-                let state = sweepResult.state;
-                let stateIdleTime = 0;
+    if (restartNeeded) {
+        startNewGame(config);
+        idleTime = 0;
+    }
+    else {
+        idleTime = executeSweepCycle(config, stats);
+    }
 
-                if (state === SweepStates.solving) {
-                    stateIdleTime = config.solvingIdleTime;
-                    stats.currentStateCounts[state] += 1;
-                } else {
-                    if (isNewGameState(state) && config.newGameStateIdleTime !== null) {
-                        stateIdleTime = config.newGameStateIdleTime;
-                    }
-                    else {
-                        stateIdleTime = config.restDefaultIdleTime;
-                    }
+    continueAutoSweep(config, stats, idleTime);
 
-                    if (!config.lastRestState || config.lastRestState !== state) {
-                        stats.currentStateCounts[state] += 1;
-
-                        if (isNewGameState(state)) {
-                            updateStateCounts(stats);
-                        }
-                    }
-
-                    config.lastRestState = state;
-                }
-
-                idleTime = stateIdleTime;
-            }
-
-            executeInteractions(interactions, !isRiddle);
-        }
-
+    function continueAutoSweep(config, stats, idleTime) {
         if (config.isAutoSweepEnabled) {
             let timeOutTime = (idleTime + config.baseIdleTime);
             setTimeout(() => autoSweep(config, stats), timeOutTime);
         }
+    }
+
+    function executeSweepCycle(config, stats) {
+        let idleTime;
+        let sweepResult = sweep(true, config.doLog, config.gameId);
+        let interactions = sweepResult.interactions;
+        let isRiddle = config.isRiddleFinderMode && sweepResult.solver === "3";
+
+        if (isRiddle) {
+            config.isAutoSweepEnabled = false;
+            idleTime = 0;
+        }
+        else {
+            let state = sweepResult.state;
+            idleTime = getIdleTimeForState(state);
+            updateAutoSweepStats(config, stats, state);
+            config.lastRestState = state;
+        }
+
+        executeInteractions(interactions, !isRiddle);
+        return idleTime;
+    }
+
+    function updateAutoSweepStats(config, stats, state) {
+        if (state === SweepStates.solving) {
+            stats.currentStateCounts[state] += 1;
+        } else if (!config.lastRestState || config.lastRestState !== state) {
+            stats.currentStateCounts[state] += 1;
+
+            if (isNewGameState(state)) {
+                updateStateCounts(stats);
+            }
+        }
+    }
+
+    function getIdleTimeForState(config, state) {
+        let stateIdleTime = 0;
+
+        if (state === SweepStates.solving) {
+            stateIdleTime = config.solvingIdleTime;
+        } else if (isNewGameState(state)) {
+            stateIdleTime = config.newGameStateIdleTime;
+        } else {
+            stateIdleTime = config.restDefaultIdleTime;
+        }
+
+        return stateIdleTime;
     }
 
     function isNewGameState(state) {
@@ -218,44 +282,54 @@ function autoSweep(config, stats) {
     }
 }
 
-function executeInteractions(interactions, isBoardInteractionEnabled) {
-    if (!isBoardInteractionEnabled) {
-        console.log("Interations:");
+function executeInteractions(interactions, withBoardInteraction) {
+    if (withBoardInteraction) {
+        executeInterationsOnBoard(interactions);
+    } else {
+        formatLogInteractions(interactions);
     }
 
-    if (interactions.length > 0) {
-        interactions.forEach(interaction => {
-            if (isBoardInteractionEnabled) {
-                if (interaction.isFlag) {
-                    if (interaction.div.classList.value !== "square bombflagged") {
-                        simulate(interaction.div, "mousedown", 2);
-                        simulate(interaction.div, "mouseup", 2);
-                    }
-                } else {
-                    simulate(interaction.div, "mouseup");
+    function executeInterationsOnBoard(interactions) {
+        interactions.forEach(action => {
+            if (action.isFlag) {
+                if (action.div.classList.value !== "square bombflagged") {
+                    simulate(action.div, "mousedown", 2);
+                    simulate(action.div, "mouseup", 2);
                 }
             } else {
-                console.log("-> " + (interaction.isFlag ? "Flag" : "Reveal") + ":", interaction.div);
+                simulate(action.div, "mouseup");
             }
         });
-    } else if (!isBoardInteractionEnabled) {
-        console.log("-> None");
+    }
+
+    function formatLogInteractions(interactions) {
+        console.log("Interations:");
+
+        if (interactions.length > 0) {
+            interactions.forEach(action => {
+                console.log("-> " + (action.isFlag ? "Flag" : "Reveal") + ":", action.div);
+            });
+        } else {
+            console.log("-> None");
+        }
     }
 }
 
-function sweep(withGuessing = true, doLog = true) {
+function sweep(withGuessing = true, doLog = true, gameId = null) {
+    let sweepT0 = performance.now();
     let interactions = [];
+    let checkResult = checkForAndAddInteractions();
 
-    return (function main() {
-        let checkResult = checkForInteractions();
-        return {
-            interactions: interactions,
-            state: checkResult.state,
-            solver: checkResult.solver
-        };
-    })();
+    let sweepResult = {
+        interactions: interactions,
+        state: checkResult.state,
+        solver: checkResult.solver
+    };
 
-    function checkForInteractions() {
+    recordSweepTime(sweepT0, gameId);
+    return sweepResult;
+
+    function checkForAndAddInteractions() {
         if (checkBombDeath()) {
             return onBombDeath();
         }
@@ -412,6 +486,7 @@ function sweep(withGuessing = true, doLog = true) {
             let checkAllCombinationsTime = (checkAllCombinationsT1 - checkAllCombinationsT0);
 
             resultInfo.messages.push("Check of all combinations took " + checkAllCombinationsTime.toFixed(4) + " milliseconds");
+            addTime(window, "sweepCombinTimes", checkAllCombinationsTime);
         } else {
             checkIsolatedUnknowns();
         }
@@ -1509,6 +1584,17 @@ function sweep(withGuessing = true, doLog = true) {
             }
         }
     }
+
+    function recordSweepTime(sweepT0, gameId) {
+        let sweepT1 = performance.now();
+        let sweepTime = (sweepT1 - sweepT0);
+
+        if (!window.sweepTimes) {
+            window.sweepTimes = [];
+        }
+
+        addTime(window.sweepTimes, gameId !== null ? gameId : 0, sweepTime);
+    }
 }
 
 function simulate(element, eventName, mouseButton) {
@@ -1568,6 +1654,14 @@ function simulate(element, eventName, mouseButton) {
 
         return destination;
     }
+}
+
+function addTime(obj, propName, time) {
+    if (!obj[propName]) {
+        obj[propName] = [];
+    }
+
+    obj[propName].push(time);
 }
 
 function combinations(n, k) {
