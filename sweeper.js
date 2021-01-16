@@ -208,27 +208,29 @@ function updateStateCounts(stats) {
     };
 }
 
-function autoSweep(config, stats, iters) {
-    if (!config.isAutoSweepEnabled) {
-        return;
-    }
+function autoSweep(config, stats, iterations) {
+    do {
+        if (!config.isAutoSweepEnabled) {
+            return;
+        }
 
-    let idleTime;
-    let restartNeeded = lastWasNewGameState(config);
+        let idleTime;
+        let restartNeeded = lastWasNewGameState(config);
 
-    if (restartNeeded) {
-        startNewGame(config);
-        idleTime = 0;
-    }
-    else {
-        idleTime = executeSweepCycle(config, stats);
-    }
+        if (restartNeeded) {
+            startNewGame(config);
+            idleTime = 0;
+        }
+        else {
+            idleTime = executeSweepCycle(config, stats);
+        }
 
-    if (iters > 0 && config.isVirtualMode) {
-        autoSweep(config, stats, iters - 1); 
-    } else {
-        continueAutoSweep(config, stats, idleTime);
-    }
+        iterations -= 1;
+
+        if (!(iterations > 0 && config.isVirtualMode)) {
+            continueAutoSweep(config, stats, idleTime);
+        }
+    } while (iterations > 0 && config.isVirtualMode);
 
     function continueAutoSweep(config, stats, idleTime) {
         if (config.isAutoSweepEnabled) {
@@ -360,22 +362,6 @@ function executeVirtualInteractions(interactions) {
     } else {
         revealFirstCell(cells, interactions[0].cell, window.virtualGame.bombAmount);
         game.hasStarted = true;
-    }
-
-    // field.forEach((row, i) => {
-    //     console.log(row.reduce((a, b) => a + formatCell(b), " " + i + " "));
-    // });
-
-    function formatCell(cell) {
-        if (cell.isUnknown) {
-            return "[ ]";
-        } else if (cell.isFlagged) {
-            return "[x]";
-        } else if (cell.isDigit) {
-            return "[" + cell.value + "]";
-        } else {
-            return "   ";
-        }
     }
 
     function revealFirstCell(cells, cell, bombAmout) {
@@ -711,10 +697,18 @@ function sweep(fieldToSweep, bombAmount, withGuessing = true, doLog = true, game
         log("[s]", SweepStates.start);
 
         if (withGuessing) {
-            revealCell(field[Math.floor(field.length / 2)][Math.floor(field[0].length / 2)]);
+            revealFirst(field);
         }
 
         return createCheckResult(SweepStates.start);
+    }
+
+    function revealFirst(field) {
+        let width = field[0].length;
+        let height = field.length;
+        let x = Math.floor(width / 2);
+        let y = Math.floor(height / 2);
+        revealCell(field[y][x]);
     }
 
     function onSolved() {
@@ -1372,13 +1366,7 @@ function sweep(fieldToSweep, bombAmount, withGuessing = true, doLog = true, game
                 let fractionForOutsideUnknowns = averageFlagsLeftOutside / outsideUnknowns.length;
 
                 outsideUnknowns = outsideUnknowns.sort((a, b) => {
-                    let flaggedNeighborAmountDiff = -(a.flaggedNeighborAmount - b.flaggedNeighborAmount);
-
-                    if (flaggedNeighborAmountDiff !== 0) {
-                        return flaggedNeighborAmountDiff;
-                    } else {
-                        return -(a.borderCellNeighborAmount - b.borderCellNeighborAmount);
-                    }
+                    return (a.borderCellNeighborAmount - b.borderCellNeighborAmount);
                 });
 
                 let outsideCandidate = outsideUnknowns[0];
@@ -1392,33 +1380,35 @@ function sweep(fieldToSweep, bombAmount, withGuessing = true, doLog = true, game
                 });
             }
 
-            cellProbs.forEach(cellProb => {
-                setTurnedTrivial(cellProb);
-
-                if (cellProb.turnedTrivial > 0) {
-                    cellProb.score = Math.pow(cellProb.fraction, 1.2);
-                }
-            });
-
             cellProbs = cellProbs.sort((a, b) => {
-                let scoreDiff = a.score - b.score;
-
-                if (scoreDiff !== 0) {
-                    return scoreDiff;
-                } else {
-                    let turnedTrivialDiff = -(a.turnedTrivial - b.turnedTrivial);
-
-                    if (turnedTrivialDiff !== 0) {
-                        return turnedTrivialDiff;
-                    } else {
-                        return -(a.candidate.neighbors.length - b.candidate.neighbors.length);
-                    }
-                }
+                return a.score - b.score;
             });
 
             if (withGuessing) {
                 if (cellProbs.length > 0) {
                     let lowestCellProb = cellProbs[0];
+
+                    if (lowestCellProb.isOutside) {
+
+                        if (!window.outsiderPositions) {
+                            window.outsiderPositions = {};
+                        }
+
+                        let coords = (lowestCellProb.candidate.y + 1) + "_" + (lowestCellProb.candidate.x + 1);
+                        let coordsObj = window.outsiderPositions[coords];
+
+                        if (!coordsObj) {
+                            let div = document.getElementById(coords);
+
+                            window.outsiderPositions[coords] = {
+                                div: div,
+                                count: 1
+                            };
+                        } else {
+                            coordsObj.count += 1;
+                        }
+                    }
+
                     resultInfo.messages.push("Reveal lowest score cell (" + lowestCellProb.percentage + ")");
                     revealCell(lowestCellProb.candidate);
                 }
@@ -1454,20 +1444,6 @@ function sweep(fieldToSweep, bombAmount, withGuessing = true, doLog = true, game
                     resultInfo.messages.push(message);
                     resultInfo.messages.push(cellProb.candidate.referenceCell);
                 });
-            }
-
-            function setTurnedTrivial(cellProb) {
-                if (typeof cellProb.turnedTrivial === "undefined") {
-                    cellProb.turnedTrivial = 0;
-
-                    cellProb.candidate.neighbors.forEach(digitNeighbor => {
-                        let flagsLeft = digitNeighbor.value - digitNeighbor.flaggedNeighborAmount;
-
-                        if (flagsLeft === (digitNeighbor.neighbors.length - 1)) {
-                            cellProb.turnedTrivial += 1;
-                        }
-                    });
-                }
             }
 
             function formatCellProbCoords(cellProb) {
