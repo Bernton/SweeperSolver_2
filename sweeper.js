@@ -11,6 +11,7 @@ let AutoSweepConfig = {
     isAutoSweepEnabled: false,
     isRiddleFinderMode: false,
     isVirtualMode: false,
+    isExtendedStats: false,
     batchSizeForVirtual: 1000,
     baseIdleTime: 0,
     solvingIdleTime: 0,
@@ -111,9 +112,12 @@ function formatLogGameStats(gamesIncluded = null, stats = AutoSweepStats, logRaw
 
     console.log("Stats for first " + gameStats.length + " games");
     logWinningPercentage();
-    logGuessesPerGame();
-    logTimePerGame();
-    logTimePerStep();
+
+    if (stats.gameStats.length > 0 && stats.gameStats[0].stepStats) {
+        logGuessesPerGame();
+        logTimePerGame();
+        logTimePerStep();
+    }
 
     if (logRaw) {
         console.log("Raw data: ", gameStats);
@@ -261,7 +265,7 @@ function autoSweep(config, stats, iterations) {
         }
         else {
             let state = sweepResult.state;
-            idleTime = getIdleTimeForState(state);
+            idleTime = getIdleTimeForState(config, state);
 
             if (!sweepResult.solver) {
                 sweepResult.solver = config.lastSweepResult.solver;
@@ -555,20 +559,26 @@ function sweepPage(withGuessing = true, doLog = true, config = null, stats = nul
         if (!stats.gameStats[gameIndex]) {
             stats.gameStats[gameIndex] = {
                 index: gameIndex,
-                stepStats: []
             };
+
+            if (config.isExtendedStats) {
+                stats.gameStats[gameIndex].stepStats = [];
+            }
         }
 
         let gameStats = stats.gameStats[gameIndex];
 
         if (!gameStats.finishState) {
-            gameStats.stepStats.push({
-                result: {
-                    state: sweepResult.state,
-                    solver: sweepResult.solver
-                },
-                time: sweepTime
-            });
+
+            if (config.isExtendedStats) {
+                gameStats.stepStats.push({
+                    result: {
+                        state: sweepResult.state,
+                        solver: sweepResult.solver
+                    },
+                    time: sweepTime
+                });
+            }
 
             if (isNewGameState(sweepResult.state)) {
                 field.forEach(row => {
@@ -578,7 +588,10 @@ function sweepPage(withGuessing = true, doLog = true, config = null, stats = nul
                 });
 
                 gameStats.finishState = sweepResult.state;
-                gameStats.finishField = field;
+
+                if (config.isExtendedStats) {
+                    gameStats.finishField = field;
+                }
             }
         }
     }
@@ -1413,17 +1426,40 @@ function sweep(fieldToSweep, bombAmount, withGuessing = true, doLog = true) {
                 let averageFlagsLeftOutside = totalFlagsLeft - averageFlagsInBorder;
                 let fractionForOutsideUnknowns = averageFlagsLeftOutside / outsideUnknowns.length;
 
-                outsideUnknowns = outsideUnknowns.sort((a, b) => {
-                    return (a.borderCellNeighborAmount - b.borderCellNeighborAmount);
+                outsideUnknowns.forEach(outsider => {
+                    let probabilityOfZero = 1;
+
+                    outsider.neighbors.forEach(neighbor => {
+                        let probabilityOfBomb;
+
+                        if (neighbor.isBorderCell && neighbor.isUnknown) {
+                            probabilityOfBomb = cellProbs.find(cellProb => {
+                                return cellProb.candidate.x === neighbor.x &&
+                                    cellProb.candidate.y === neighbor.y;
+                            }).fraction;
+                        } else if (neighbor.isFlagged) {
+                            probabilityOfBomb = 1;
+                        } else if (outsideUnknowns.includes(neighbor)) {
+                            probabilityOfBomb = fractionForOutsideUnknowns;
+                        }
+
+                        probabilityOfZero *= (1 - probabilityOfBomb);
+                    });
+
+                    outsider.probabilityOfZero = probabilityOfZero;
                 });
 
-                let outsideCandidate = outsideUnknowns[0];
+                outsideUnknowns = outsideUnknowns.sort((a, b) => {
+                    return -(a.probabilityOfZero - b.probabilityOfZero);
+                });
+
+                let outsiderCandidate = outsideUnknowns[0];
 
                 cellProbs.push({
                     percentage: (fractionForOutsideUnknowns * 100).toFixed(1) + "%",
                     fraction: fractionForOutsideUnknowns,
                     score: fractionForOutsideUnknowns,
-                    candidate: outsideCandidate,
+                    candidate: outsiderCandidate,
                     isOutside: true
                 });
             }
@@ -1435,28 +1471,6 @@ function sweep(fieldToSweep, bombAmount, withGuessing = true, doLog = true) {
             if (withGuessing) {
                 if (cellProbs.length > 0) {
                     let lowestCellProb = cellProbs[0];
-
-                    if (lowestCellProb.isOutside) {
-
-                        if (!window.outsiderPositions) {
-                            window.outsiderPositions = {};
-                        }
-
-                        let coords = (lowestCellProb.candidate.y + 1) + "_" + (lowestCellProb.candidate.x + 1);
-                        let coordsObj = window.outsiderPositions[coords];
-
-                        if (!coordsObj) {
-                            let div = document.getElementById(coords);
-
-                            window.outsiderPositions[coords] = {
-                                div: div,
-                                count: 1
-                            };
-                        } else {
-                            coordsObj.count += 1;
-                        }
-                    }
-
                     resultInfo.messages.push("Reveal lowest score cell (" + lowestCellProb.percentage + ")");
                     revealCell(lowestCellProb.candidate);
                 }
