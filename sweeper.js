@@ -10,7 +10,7 @@ let AutoSweepConfig = {
     doLog: false,
     isAutoSweepEnabled: false,
     isRiddleFinderMode: false,
-    isVirtualMode: false,
+    isVirtualMode: true,
     isExtendedStats: false,
     batchSizeForVirtual: 1000,
     baseIdleTime: 0,
@@ -969,7 +969,7 @@ function sweep(fieldToSweep, bombAmount, withGuessing = true, doLog = true) {
                     });
 
                     digits.forEach(digit => {
-                        digit.valueForUnknowns = 1 / combinations(digit.unknownNeighborAmount, digit.value - digit.flaggedNeighborAmount);
+                        digit.valueForUnknowns = 1 / binomialCoefficient(digit.unknownNeighborAmount, digit.value - digit.flaggedNeighborAmount);
                     });
 
                     let digitsSorted = digits.sort((a, b) => -(a.valueForUnknowns - b.valueForUnknowns));
@@ -1178,7 +1178,7 @@ function sweep(fieldToSweep, bombAmount, withGuessing = true, doLog = true) {
                     let clusterSize = candidates[j].clusterSize;
 
                     if (clusterSize > 1) {
-                        let combinationAmount = combinations(clusterSize, flagValue);
+                        let combinationAmount = binomialCoefficient(clusterSize, flagValue);
                         occurenceCount *= combinationAmount;
                     }
 
@@ -1284,29 +1284,12 @@ function sweep(fieldToSweep, bombAmount, withGuessing = true, doLog = true) {
             }
         }
 
-        function mergeGroupingsCellProbsWithCheck(groupingResults, totalLeastBombs, totalMostBombs) {
+        function mergeGroupingsCellProbsWithCheck(groupingResults) {
             let mergeResult = {
                 cellProbs: [],
                 caseWithNoFlagsLeftFound: false
             };
 
-            // let tooFewBombsNotPossible = (totalLeastBombs + outsideUnknowns.length >= totalFlagsLeft);
-            // let tooManyBombsNotPossible = (totalMostBombs <= totalFlagsLeft);
-
-            // if (tooFewBombsNotPossible && tooManyBombsNotPossible) {
-            //     groupingResults.forEach(groupingResult => {
-            //         groupingResult.cellProbs.forEach(cellProb => {
-            //             mergeResult.cellProbs.push(cellProb);
-            //         });
-            //     });
-            // } else {
-            checkGroupingsCellProbs(groupingResults, mergeResult);
-            // }
-
-            return mergeResult;
-        }
-
-        function checkGroupingsCellProbs(groupingResults, mergeResult) {
             let mergedValidCombinations = [];
             let mergedCandidates = [];
 
@@ -1366,25 +1349,20 @@ function sweep(fieldToSweep, bombAmount, withGuessing = true, doLog = true) {
                     toAddTo.push(newCombination);
                 }
             }
+
+            return mergeResult;
         }
 
         function checkGroupingsCombined(groupingResults) {
             let caseWithNoFlagsLeftFound = false;
-            let totalLeastBombs = 0;
-            let totalMostBombs = 0;
 
             groupingResults.forEach(groupingResult => {
-                if (groupingResult.validCombinations && groupingResult.validCombinations.length > 0) {
-                    totalLeastBombs += groupingResult.leastBombs;
-                    totalMostBombs += groupingResult.mostBombs;
-                }
-
                 if (groupingResult.caseWithNoFlagsLeftFound) {
                     caseWithNoFlagsLeftFound = true;
                 }
             });
 
-            let mergeResult = mergeGroupingsCellProbsWithCheck(groupingResults, totalLeastBombs, totalMostBombs);
+            let mergeResult = mergeGroupingsCellProbsWithCheck(groupingResults);
 
             if (caseWithNoFlagsLeftFound) {
                 resultInfo.messages.push("Case with no flags left found");
@@ -1423,7 +1401,7 @@ function sweep(fieldToSweep, bombAmount, withGuessing = true, doLog = true) {
                     comb: c,
                     flagCount: c.reduce((a, b) => a + b),
                     occurences: c.reduce((a, b, i) => {
-                        return a * combinations(clusteredCellProbs[i].candidate.clusterSize, b);
+                        return a * binomialCoefficient(clusteredCellProbs[i].candidate.clusterSize, b);
                     }, 1)
                 };
             });
@@ -1436,8 +1414,7 @@ function sweep(fieldToSweep, bombAmount, withGuessing = true, doLog = true) {
             let totalDist = 0;
 
             combinationsDists.forEach(c => {
-                // c.dist = c.occurences; // Old way
-                c.dist = (c.occurences / combinations(n, c.flagCount)) * hyperGeometricDistributionAppox(N, M, n, c.flagCount);
+                c.dist = (c.occurences / binomialCoefficient(n, c.flagCount)) * approxHypergeometricDistribution(N, M, n, c.flagCount);
 
                 if (c.dist === 0 || isNaN(c.dist)) {
                     overflowFail = true;
@@ -1450,19 +1427,19 @@ function sweep(fieldToSweep, bombAmount, withGuessing = true, doLog = true) {
                 combinationsDists.forEach(c => {
                     c.normalDist = c.dist / totalDist;
                 });
-    
+
                 let candidateValues = new Array(clusteredCellProbs.length).fill(0);
-    
+
                 combinationsDists.forEach(c => {
                     c.comb.forEach((value, i) => {
                         candidateValues[i] += (value * c.normalDist) / clusteredCellProbs[i].candidate.clusterSize;
                     });
                 });
-    
+
                 let newCellProbs = [];
-    
+
                 candidateValues.forEach((value, i) => {
-    
+
                     clusteredCellProbs[i].candidate.clusterGroup.forEach(groupCell => {
                         newCellProbs.push({
                             percentage: (value * 100).toFixed(1) + "%",
@@ -1472,8 +1449,10 @@ function sweep(fieldToSweep, bombAmount, withGuessing = true, doLog = true) {
                         });
                     });
                 });
-    
+
                 cellProbs = newCellProbs;
+            } else {
+                console.log("WTF!");
             }
 
             if (outsideUnknowns.length > 0) {
@@ -1895,7 +1874,6 @@ function sweep(fieldToSweep, bombAmount, withGuessing = true, doLog = true) {
 function applyToNeighbors(matrix, cell, action) {
     for (let yOffset = -1; yOffset <= 1; yOffset++) {
         for (let xOffset = -1; xOffset <= 1; xOffset++) {
-
             if (yOffset === 0 && xOffset === 0) {
                 continue;
             }
@@ -1903,11 +1881,7 @@ function applyToNeighbors(matrix, cell, action) {
             let y = cell.y + xOffset;
             let x = cell.x + yOffset;
 
-            let yInBounds = y >= 0 && y < matrix.length;
-            let xInBounds = x >= 0 && x < matrix[cell.y].length;
-            let inBounds = yInBounds && xInBounds;
-
-            if (inBounds) {
+            if (y >= 0 && y < matrix.length && x >= 0 && x < matrix[cell.y].length) {
                 let isBreak = action(matrix[y][x]) === "break";
 
                 if (isBreak) {
@@ -1961,6 +1935,7 @@ function simulate(element, eventName, mouseButton) {
 
     if (document.createEvent) {
         oEvent = document.createEvent(eventType);
+
         if (eventType === 'HTMLEvents') {
             oEvent.initEvent(eventName, options.bubbles, options.cancelable);
         }
@@ -1969,6 +1944,7 @@ function simulate(element, eventName, mouseButton) {
                 options.button, options.pointerX, options.pointerY, options.pointerX, options.pointerY,
                 options.ctrlKey, options.altKey, options.shiftKey, options.metaKey, options.button, element);
         }
+
         element.dispatchEvent(oEvent);
     }
     else {
@@ -1978,6 +1954,7 @@ function simulate(element, eventName, mouseButton) {
         oEvent = extend(evt, options);
         element.fireEvent('on' + eventName, oEvent);
     }
+
     return element;
 
     function extend(destination, source) {
@@ -1989,47 +1966,29 @@ function simulate(element, eventName, mouseButton) {
     }
 }
 
-function hyperGeometricDistributionAppox(N, M, n, k) {
-    if (n <= (N / 20)) {
-        let p = M / N;
+function approxHypergeometricDistribution(N, M, n, k) {
+    return (n * 20 <= N) ? binomialDistribution(n, M / N, k) : hypergeometricDistribution(N, M, n, k);
+}
 
-        if (n >= 50 && p <= 0.1 && n * p > 0) {
-            return poissonDist(n * p, k);
-        }
+function hypergeometricDistribution(N, M, n, k) {
+    return binomialCoefficient(M, k) * binomialCoefficient(N - M, n - k) / binomialCoefficient(N, n);
+}
 
-        return binomialDist(n, p, k);
+function binomialDistribution(n, p, k) {
+    return binomialCoefficient(n, k) * Math.pow(p, k) * Math.pow(1 - p, n - k);
+}
+
+function binomialCoefficient(n, k) {
+    let coefficient = 1;
+
+    if (k > n - k) {
+        k = n - k;
     }
 
-    return (combinations(M, k) * combinations(N - M, n - k)) / combinations(N, n);
-}
-
-function poissonDist(lambda, k) {
-    return Math.pow(lambda, k) / factorial(k) * Math.exp(-lambda);
-}
-
-function binomialDist(n, p, k) {
-    return combinations(n, k) * Math.pow(p, k) * Math.pow(1 - p, n - k);
-}
-
-function combinations(n, k) {
-    return factorial(n) / (factorial(k) * factorial(n - k));
-
-    function factorial(n) {
-        if (!window.factorialCache) {
-            window.factorialCache = [];
-        }
-
-        let cache = window.factorialCache;
-
-        if (n === 0 || n === 1) {
-            return 1;
-        }
-
-        if (cache[n] > 0) {
-            return cache[n];
-        }
-
-        cache[n] = factorial(n - 1) * n;
-        return cache[n];
+    for (let i = 0; i < k; ++i) {
+        coefficient *= (n - i);
+        coefficient /= (i + 1);
     }
+
+    return coefficient;
 }
