@@ -866,10 +866,10 @@ function sweep(fieldToSweep, bombAmount, withGuessing = true, doLog = true) {
             });
 
             if (!resultInfo.certainResultFound) {
-                let cellProbs = checkGroupingsCombined(groupingResults);
+                let mergeResult = checkGroupingsCombined(groupingResults);
 
                 if (!resultInfo.certainResultFound) {
-                    handleNoCertainResultFound(cellProbs);
+                    handleNoCertainResultFound(mergeResult);
                 }
             }
 
@@ -1290,18 +1290,18 @@ function sweep(fieldToSweep, bombAmount, withGuessing = true, doLog = true) {
                 caseWithNoFlagsLeftFound: false
             };
 
-            let tooFewBombsNotPossible = (totalLeastBombs + outsideUnknowns.length >= totalFlagsLeft);
-            let tooManyBombsNotPossible = (totalMostBombs <= totalFlagsLeft);
+            // let tooFewBombsNotPossible = (totalLeastBombs + outsideUnknowns.length >= totalFlagsLeft);
+            // let tooManyBombsNotPossible = (totalMostBombs <= totalFlagsLeft);
 
-            if (tooFewBombsNotPossible && tooManyBombsNotPossible) {
-                groupingResults.forEach(groupingResult => {
-                    groupingResult.cellProbs.forEach(cellProb => {
-                        mergeResult.cellProbs.push(cellProb);
-                    });
-                });
-            } else {
-                checkGroupingsCellProbs(groupingResults, mergeResult);
-            }
+            // if (tooFewBombsNotPossible && tooManyBombsNotPossible) {
+            //     groupingResults.forEach(groupingResult => {
+            //         groupingResult.cellProbs.forEach(cellProb => {
+            //             mergeResult.cellProbs.push(cellProb);
+            //         });
+            //     });
+            // } else {
+            checkGroupingsCellProbs(groupingResults, mergeResult);
+            // }
 
             return mergeResult;
         }
@@ -1339,6 +1339,7 @@ function sweep(fieldToSweep, bombAmount, withGuessing = true, doLog = true) {
             };
 
             searchCertainResult(mergedCandidates, mergedGroupingResult, totalFlagsLeft);
+            mergeResult.validCombinations = mergedGroupingResult.validCombinations;
             mergeResult.cellProbs = mergedGroupingResult.cellProbs;
 
             function addNewCombinationIfValid(toAddTo, newCombination, isLastToMerge) {
@@ -1391,13 +1392,14 @@ function sweep(fieldToSweep, bombAmount, withGuessing = true, doLog = true) {
                 resultInfo.messages.push("Case with no flags left found (after merge)");
             }
 
-            return mergeResult.cellProbs;
+            return mergeResult;
         }
 
-        function handleNoCertainResultFound(cellProbs) {
+        function handleNoCertainResultFound(mergeResult) {
+            let clusteredCellProbs = mergeResult.cellProbs;
             let unclusteredCellProbs = [];
 
-            cellProbs.forEach(cellProb => {
+            clusteredCellProbs.forEach(cellProb => {
                 if (cellProb.candidate.clusterSize > 1) {
                     cellProb.candidate.clusterGroup.forEach(clusterCell => {
                         let newCellProb = {
@@ -1414,7 +1416,65 @@ function sweep(fieldToSweep, bombAmount, withGuessing = true, doLog = true) {
                 }
             });
 
-            cellProbs = unclusteredCellProbs;
+            let cellProbs = unclusteredCellProbs;
+
+            let combinationsDists = mergeResult.validCombinations.map(c => {
+                return {
+                    comb: c,
+                    flagCount: c.reduce((a, b) => a + b),
+                    occurences: c.reduce((a, b, i) => {
+                        return a * combinations(clusteredCellProbs[i].candidate.clusterSize, b);
+                    }, 1)
+                };
+            });
+
+            let overflowFail = false;
+            let N = outsideUnknowns.length + unclusteredCellProbs.length;
+            let M = totalFlagsLeft;
+            let n = unclusteredCellProbs.length;
+
+            let totalDist = 0;
+
+            combinationsDists.forEach(c => {
+                // c.dist = c.occurences; // Old way
+                c.dist = (c.occurences / combinations(n, c.flagCount)) * hyperGeometricDistributionAppox(N, M, n, c.flagCount);
+
+                if (c.dist === 0 || isNaN(c.dist)) {
+                    overflowFail = true;
+                }
+
+                totalDist += c.dist;
+            });
+
+            if (!overflowFail) {
+                combinationsDists.forEach(c => {
+                    c.normalDist = c.dist / totalDist;
+                });
+    
+                let candidateValues = new Array(clusteredCellProbs.length).fill(0);
+    
+                combinationsDists.forEach(c => {
+                    c.comb.forEach((value, i) => {
+                        candidateValues[i] += (value * c.normalDist) / clusteredCellProbs[i].candidate.clusterSize;
+                    });
+                });
+    
+                let newCellProbs = [];
+    
+                candidateValues.forEach((value, i) => {
+    
+                    clusteredCellProbs[i].candidate.clusterGroup.forEach(groupCell => {
+                        newCellProbs.push({
+                            percentage: (value * 100).toFixed(1) + "%",
+                            fraction: value,
+                            score: value,
+                            candidate: groupCell,
+                        });
+                    });
+                });
+    
+                cellProbs = newCellProbs;
+            }
 
             if (outsideUnknowns.length > 0) {
                 let averageFlagsInBorder = 0;
@@ -1504,7 +1564,12 @@ function sweep(fieldToSweep, bombAmount, withGuessing = true, doLog = true) {
                     }
 
                     resultInfo.messages.push(message);
-                    resultInfo.messages.push(cellProb.candidate.referenceCell);
+
+                    if (cellProb.candidate.referenceCell.div) {
+                        resultInfo.messages.push(cellProb.candidate.referenceCell.div);
+                    } else {
+                        resultInfo.messages.push(cellProb.candidate.referenceCell);
+                    }
                 });
             }
 
@@ -1922,6 +1987,28 @@ function simulate(element, eventName, mouseButton) {
 
         return destination;
     }
+}
+
+function hyperGeometricDistributionAppox(N, M, n, k) {
+    if (n <= (N / 20)) {
+        let p = M / N;
+
+        if (n >= 50 && p <= 0.1 && n * p > 0) {
+            return poissonDist(n * p, k);
+        }
+
+        return binomialDist(n, p, k);
+    }
+
+    return (combinations(M, k) * combinations(N - M, n - k)) / combinations(N, n);
+}
+
+function poissonDist(lambda, k) {
+    return Math.pow(lambda, k) / factorial(k) * Math.exp(-lambda);
+}
+
+function binomialDist(n, p, k) {
+    return combinations(n, k) * Math.pow(p, k) * Math.pow(1 - p, n - k);
 }
 
 function combinations(n, k) {
