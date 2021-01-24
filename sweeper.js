@@ -757,25 +757,31 @@ function sweep(fieldToSweep, bombAmount, withGuessing = true, doLog = true) {
         let outsideUnknowns = getOutsideUnknowns();
 
         if (borderCellGroupings.length > 0) {
-            let groupingResults = [];
+            let groupingCheckResults = [];
             let leastBombsCount = 0;
 
             let checkAllCombinationsT0 = performance.now();
 
-            borderCellGroupings.forEach(grouping => {
-                if (!resultInfo.certainResultFound) {
-                    let groupingFlagsLeft = totalFlagsLeft - leastBombsCount;
-                    let groupingResult = checkGrouping(grouping, groupingFlagsLeft);
-                    leastBombsCount += (groupingResult.leastBombs ? groupingResult.leastBombs : 0);
-                    groupingResults.push(groupingResult);
+            for (let i = 0; i < borderCellGroupings.length; i++) {
+                let groupingFlagsLeft = totalFlagsLeft - leastBombsCount;
+                let searchResult = checkGrouping(borderCellGroupings[i], groupingFlagsLeft);
+
+                if (searchResult.certainResultFound) {
+                    resultInfo.certainResultFound = true;
+                    break;
                 }
-            });
+
+                leastBombsCount += (searchResult.leastBombs ? searchResult.leastBombs : 0);
+                groupingCheckResults.push(searchResult);
+            }
 
             if (!resultInfo.certainResultFound) {
-                let mergeResult = checkGroupingsCombined(groupingResults);
+                let combinedCheckResult = checkGroupingsCombined(groupingCheckResults);
 
-                if (!resultInfo.certainResultFound) {
-                    handleNoCertainResultFound(mergeResult);
+                if (combinedCheckResult.certainResultFound) {
+                    resultInfo.certainResultFound = true;
+                } else {
+                    handleNoCertainResultFound(combinedCheckResult);
                 }
             }
 
@@ -959,16 +965,9 @@ function sweep(fieldToSweep, bombAmount, withGuessing = true, doLog = true) {
         }
 
         function checkGrouping(grouping, groupingFlagsLeft) {
-            let groupingResult = {
-                validCombinations: null,
-                leastBombs: null,
-                mostBombs: null,
-                caseWithNoFlagsLeftFound: false,
-                messages: []
-            };
-
             let digits = grouping.digits;
             let candidates = clusterCandidates(grouping.unknowns);
+            let caseWithNoFlagsLeftFound = false;
             let validCombinations = [];
 
             digits.forEach(digit => {
@@ -1003,6 +1002,8 @@ function sweep(fieldToSweep, bombAmount, withGuessing = true, doLog = true) {
 
                     if (areValidFreesToSet) {
                         let areValidFlagsToSet = (node.flagsLeft >= flagsToSet);
+
+                        if (!areValidFlagsToSet) { caseWithNoFlagsLeftFound = true; }
 
                         if (areValidFlagsToSet && flagsToSet > 0) {
                             candidate.neighbors.forEach(digitNeighbor => {
@@ -1049,12 +1050,13 @@ function sweep(fieldToSweep, bombAmount, withGuessing = true, doLog = true) {
                 });
             }
 
-            groupingResult.validCombinations = validCombinations;
-            searchCertainResult(candidates, groupingResult, groupingFlagsLeft);
-            return groupingResult;
+            let searchResult = searchCertainResult(candidates, validCombinations, groupingFlagsLeft);
+            searchResult.caseWithNoFlagsLeftFound = caseWithNoFlagsLeftFound;
+            return searchResult;
         }
 
-        function searchCertainResult(candidates, groupingResult, groupingFlagsLeft) {
+        function searchCertainResult(candidates, validCombinations, groupingFlagsLeft) {
+            let certainResultFound = false;
             let occurencesValues = Array(candidates.length).fill(0);
             let occurenceCounts = [];
             let totalOccurences = 0;
@@ -1062,7 +1064,7 @@ function sweep(fieldToSweep, bombAmount, withGuessing = true, doLog = true) {
             let leastBombs = Number.MAX_VALUE;
             let mostBombs = 0;
 
-            groupingResult.validCombinations.forEach(validCombination => {
+            validCombinations.forEach(validCombination => {
                 let occurenceCount = 1;
                 let bombs = 0;
 
@@ -1088,9 +1090,6 @@ function sweep(fieldToSweep, bombAmount, withGuessing = true, doLog = true) {
                 mostBombs = Math.max(mostBombs, bombs);
             });
 
-            groupingResult.leastBombs = leastBombs;
-            groupingResult.mostBombs = mostBombs;
-
             let noBombsLeftForRest = (leastBombs === groupingFlagsLeft && outsideUnknowns.length > 0);
 
             if (noBombsLeftForRest) {
@@ -1104,14 +1103,11 @@ function sweep(fieldToSweep, bombAmount, withGuessing = true, doLog = true) {
             }
 
             let fractionOfFlag = occurencesValues.map(c => c / totalOccurences);
-            let percentOfFlag = occurencesValues.map(c => (c / totalOccurences * 100.0).toFixed(1) + "%");
             let cellProbs = [];
 
             candidates.forEach((candidate, i) => {
                 cellProbs.push({
-                    percentage: percentOfFlag[i],
                     fraction: fractionOfFlag[i],
-                    score: fractionOfFlag[i],
                     candidate: candidate
                 });
             });
@@ -1125,36 +1121,32 @@ function sweep(fieldToSweep, bombAmount, withGuessing = true, doLog = true) {
                         anyZeroPercent = true;
                     }
 
-                    cellProb.candidate.clusterGroup.forEach(clusterCell => {
-                        revealCell(clusterCell);
-                    });
+                    cellProb.candidate.clusterGroup.forEach(clusterCell => revealCell(clusterCell));
                 }
             });
 
             if (noBombsLeftForRest || anyZeroPercent) {
-                resultInfo.certainResultFound = true;
+                certainResultFound = true;
             } else {
-                let flagsFound = false;
-
                 cellProbs.forEach(cellProb => {
                     if (cellProb.fraction === 1) {
-                        if (!flagsFound) {
+                        if (!certainResultFound) {
                             resultInfo.messages.push("Flags found - bomb in every valid combination");
-                            flagsFound = true;
+                            certainResultFound = true;
                         }
 
-                        cellProb.candidate.clusterGroup.forEach(clusterCell => {
-                            flagCell(clusterCell);
-                        });
+                        cellProb.candidate.clusterGroup.forEach(clusterCell => flagCell(clusterCell));
                     }
                 });
-
-                if (flagsFound) {
-                    resultInfo.certainResultFound = true;
-                } else {
-                    groupingResult.cellProbs = cellProbs;
-                }
             }
+
+            return {
+                certainResultFound: certainResultFound,
+                validCombinations: validCombinations,
+                candidates: candidates,
+                leastBombs: leastBombs,
+                mostBombs: mostBombs
+            };
         }
 
         function checkIsolatedUnknowns() {
@@ -1176,46 +1168,38 @@ function sweep(fieldToSweep, bombAmount, withGuessing = true, doLog = true) {
             }
         }
 
-        function mergeGroupingsCellProbsWithCheck(groupingResults) {
-            let mergeResult = {
-                cellProbs: [],
-                caseWithNoFlagsLeftFound: false
-            };
-
+        function mergeGroupingsCombinationsAndCheck(groupingCheckResults) {
             let mergedValidCombinations = [];
             let mergedCandidates = [];
+            let caseWithNoFlagsLeftFound = false;
 
-            groupingResults.forEach((groupingResult, i) => {
+            groupingCheckResults.forEach((groupingSearchResult, i) => {
                 let newValidCombinations = [];
-                let isLastToMerge = (i === (groupingResults.length - 1));
+                let isLastToMerge = (i === (groupingCheckResults.length - 1));
 
                 if (mergedCandidates.length > 0) {
                     mergedValidCombinations.forEach(currentCombination => {
-                        groupingResult.validCombinations.forEach(combinationToMerge => {
+                        groupingSearchResult.validCombinations.forEach(combinationToMerge => {
                             let newCombination = currentCombination.concat(combinationToMerge);
                             addNewCombinationIfValid(newValidCombinations, newCombination, isLastToMerge);
                         });
                     });
                 } else {
-                    groupingResult.validCombinations.forEach(combinationToMerge => {
+                    groupingSearchResult.validCombinations.forEach(combinationToMerge => {
                         addNewCombinationIfValid(newValidCombinations, combinationToMerge, isLastToMerge);
                     });
                 }
 
                 mergedValidCombinations = newValidCombinations;
 
-                groupingResult.cellProbs.forEach(cellProb => {
-                    mergedCandidates.push(cellProb.candidate);
+                groupingSearchResult.candidates.forEach(candidate => {
+                    mergedCandidates.push(candidate);
                 });
             });
 
-            let mergedGroupingResult = {
-                validCombinations: mergedValidCombinations
-            };
-
-            searchCertainResult(mergedCandidates, mergedGroupingResult, totalFlagsLeft);
-            mergeResult.validCombinations = mergedGroupingResult.validCombinations;
-            mergeResult.cellProbs = mergedGroupingResult.cellProbs;
+            let searchResult = searchCertainResult(mergedCandidates, mergedValidCombinations, totalFlagsLeft);
+            searchResult.caseWithNoFlagsLeftFound = caseWithNoFlagsLeftFound;
+            return searchResult;
 
             function addNewCombinationIfValid(toAddTo, newCombination, isLastToMerge) {
                 let isValid = true;
@@ -1227,7 +1211,7 @@ function sweep(fieldToSweep, bombAmount, withGuessing = true, doLog = true) {
                     flagAmount += combFlagAmount;
 
                     if (flagAmount > totalFlagsLeft) {
-                        mergeResult.caseWithNoFlagsLeftFound = true;
+                        caseWithNoFlagsLeftFound = true;
                         isValid = false;
                         break;
                     }
@@ -1241,40 +1225,31 @@ function sweep(fieldToSweep, bombAmount, withGuessing = true, doLog = true) {
                     toAddTo.push(newCombination);
                 }
             }
-
-            return mergeResult;
         }
 
-        function checkGroupingsCombined(groupingResults) {
-            let caseWithNoFlagsLeftFound = false;
-
-            groupingResults.forEach(groupingResult => {
-                if (groupingResult.caseWithNoFlagsLeftFound) {
-                    caseWithNoFlagsLeftFound = true;
-                }
-            });
-
-            let mergeResult = mergeGroupingsCellProbsWithCheck(groupingResults);
+        function checkGroupingsCombined(groupingCheckResults) {
+            let caseWithNoFlagsLeftFound = groupingCheckResults.reduce((a, b) => a || b.caseWithNoFlagsLeftFound, false);
+            let checkResult = mergeGroupingsCombinationsAndCheck(groupingCheckResults);
 
             if (caseWithNoFlagsLeftFound) {
                 resultInfo.messages.push("Case with no flags left found");
-            } else if (mergeResult.caseWithNoFlagsLeftFound) {
+            } else if (checkResult.caseWithNoFlagsLeftFound) {
                 resultInfo.messages.push("Case with no flags left found (after merge)");
             }
 
-            return mergeResult;
+            return checkResult;
         }
 
-        function handleNoCertainResultFound(mergeResult) {
-            let oldCellProbs = mergeResult.cellProbs;
-            let candidateAmount = oldCellProbs.reduce((a, b) => a + b.candidate.clusterSize, 0);
+        function calculateCandidateCellProbs(checkResult) {
+            let candidates = checkResult.candidates;
+            let candidateAmount = candidates.reduce((a, b) => a + b.clusterSize, 0);
 
-            let combinationProbs = mergeResult.validCombinations.map(validCombination => {
+            let combinationProbs = checkResult.validCombinations.map(validCombination => {
                 return {
                     combination: validCombination,
                     flagAmount: validCombination.reduce((a, b) => a + b),
                     occurences: validCombination.reduce((a, b, i) => {
-                        return a * binomialCoefficient(oldCellProbs[i].candidate.clusterSize, b);
+                        return a * binomialCoefficient(candidates[i].clusterSize, b);
                     }, 1)
                 };
             });
@@ -1290,18 +1265,18 @@ function sweep(fieldToSweep, bombAmount, withGuessing = true, doLog = true) {
             });
 
             combinationProbs.forEach(prob => prob.normalWeight = prob.weight / totalWeight);
-            let candidateValues = new Array(oldCellProbs.length).fill(0);
+            let candidateValues = new Array(candidates.length).fill(0);
 
             combinationProbs.forEach(prob => {
                 prob.combination.forEach((value, i) => {
-                    candidateValues[i] += (value * prob.normalWeight) / oldCellProbs[i].candidate.clusterSize;
+                    candidateValues[i] += (value * prob.normalWeight) / candidates[i].clusterSize;
                 });
             });
 
             let cellProbs = [];
 
             candidateValues.forEach((value, i) => {
-                oldCellProbs[i].candidate.clusterGroup.forEach(groupCell => {
+                candidates[i].clusterGroup.forEach(groupCell => {
                     cellProbs.push({
                         percentage: (value * 100).toFixed(2) + "%",
                         fraction: value,
@@ -1311,57 +1286,70 @@ function sweep(fieldToSweep, bombAmount, withGuessing = true, doLog = true) {
                 });
             });
 
-            if (outsideUnknowns.length > 0) {
-                let averageFlagsInBorder = 0;
+            return cellProbs;
+        }
 
-                cellProbs.forEach(cellProb => {
-                    averageFlagsInBorder += cellProb.fraction;
-                });
-
-                let averageFlagsLeftOutside = totalFlagsLeft - averageFlagsInBorder;
-                let fractionForOutsideUnknowns = averageFlagsLeftOutside / outsideUnknowns.length;
-
-                outsideUnknowns.forEach(outsider => {
-                    let probabilityOfZero = 1;
-
-                    outsider.neighbors.forEach(neighbor => {
-                        let probabilityOfBomb;
-
-                        if (neighbor.isBorderCell && neighbor.isUnknown) {
-                            probabilityOfBomb = cellProbs.find(cellProb => {
-                                return cellProb.candidate.x === neighbor.x &&
-                                    cellProb.candidate.y === neighbor.y;
-                            }).fraction;
-                        } else if (neighbor.isFlagged) {
-                            probabilityOfBomb = 1;
-                        } else if (outsideUnknowns.includes(neighbor)) {
-                            probabilityOfBomb = fractionForOutsideUnknowns;
-                        }
-
-                        probabilityOfZero *= (1 - probabilityOfBomb);
-                    });
-
-                    outsider.probabilityOfZero = probabilityOfZero;
-                });
-
-                outsideUnknowns = outsideUnknowns.sort((a, b) => {
-                    return -(a.probabilityOfZero - b.probabilityOfZero);
-                });
-
-                let outsiderCandidate = outsideUnknowns[0];
-
-                cellProbs.push({
-                    percentage: (fractionForOutsideUnknowns * 100).toFixed(2) + "%",
-                    fraction: fractionForOutsideUnknowns,
-                    score: fractionForOutsideUnknowns,
-                    candidate: outsiderCandidate,
-                    isOutside: true
-                });
+        function calculateOutsiderCellProb(cellProbs) {
+            if (outsideUnknowns.length === 0) {
+                return null;
             }
 
-            cellProbs = cellProbs.sort((a, b) => {
-                return a.score - b.score;
+            let averageFlagsInBorder = 0;
+
+            cellProbs.forEach(cellProb => {
+                averageFlagsInBorder += cellProb.fraction;
             });
+
+            let averageFlagsLeftOutside = totalFlagsLeft - averageFlagsInBorder;
+            let fractionForOutsideUnknowns = averageFlagsLeftOutside / outsideUnknowns.length;
+
+            outsideUnknowns.forEach(outsider => {
+                let probabilityOfZero = 1;
+
+                outsider.neighbors.forEach(neighbor => {
+                    let probabilityOfBomb;
+
+                    if (neighbor.isBorderCell && neighbor.isUnknown) {
+                        probabilityOfBomb = cellProbs.find(cellProb => {
+                            return cellProb.candidate.x === neighbor.x &&
+                                cellProb.candidate.y === neighbor.y;
+                        }).fraction;
+                    } else if (neighbor.isFlagged) {
+                        probabilityOfBomb = 1;
+                    } else if (outsideUnknowns.includes(neighbor)) {
+                        probabilityOfBomb = fractionForOutsideUnknowns;
+                    }
+
+                    probabilityOfZero *= (1 - probabilityOfBomb);
+                });
+
+                outsider.probabilityOfZero = probabilityOfZero;
+            });
+
+            outsideUnknowns = outsideUnknowns.sort((a, b) => {
+                return -(a.probabilityOfZero - b.probabilityOfZero);
+            });
+
+            let outsiderCandidate = outsideUnknowns[0];
+
+            return {
+                percentage: (fractionForOutsideUnknowns * 100).toFixed(2) + "%",
+                fraction: fractionForOutsideUnknowns,
+                score: fractionForOutsideUnknowns,
+                candidate: outsiderCandidate,
+                isOutside: true
+            };
+        }
+
+        function handleNoCertainResultFound(checkResult) {
+            let cellProbs = calculateCandidateCellProbs(checkResult);
+            let outsider = calculateOutsiderCellProb(cellProbs);
+            if (outsider) { cellProbs.push(outsider); }
+            evaluateCellProbs(cellProbs);
+        }
+
+        function evaluateCellProbs(cellProbs) {
+            cellProbs = cellProbs.sort((a, b) => a.score - b.score);
 
             if (withGuessing && cellProbs.length > 0) {
                 let lowestCellProb = cellProbs[0];
