@@ -11,6 +11,7 @@ let AutoSweepConfig = {
     isAutoSweepEnabled: false,
     isRiddleFinderMode: false,
     isVirtualMode: false,
+    virtualGameConfig: null,
     isExtendedStats: false,
     batchSizeForVirtual: 1000,
     baseIdleTime: 0,
@@ -179,7 +180,7 @@ function startNewGameForAutoSweep(config = AutoSweepConfig) {
     config.gameIndex += 1;
 
     if (config.isVirtualMode) {
-        restartVirtualGame();
+        restartVirtualGame(config.virtualGameConfig);
     } else {
         simulate(document.getElementById('face'), "mousedown");
         simulate(document.getElementById('face'), "mouseup");
@@ -310,6 +311,11 @@ function getBombAmount() {
     let optionsRow = checkedBox.parent().parent().parent();
     let amountBombsCell = optionsRow.find('td').last();
     let bombAmount = Number(amountBombsCell.html());
+
+    if (isNaN(bombAmount)) {
+        bombAmount = Number(amountBombsCell.children()[0].value);
+    }
+
     return bombAmount;
 }
 
@@ -453,8 +459,8 @@ function restartVirtualGame(config) {
     function createExpertGame() { return createVirtualGame(30, 16, 99); }
 }
 
-function getVirtualGame() {
-    if (!window.virtualGame) { restartVirtualGame(); }
+function getVirtualGame(config) {
+    if (!window.virtualGame) { restartVirtualGame(config); }
 
     return {
         field: window.virtualGame.field,
@@ -469,7 +475,7 @@ function sweepPage(withGuessing = true, doLog = true, config = null, stats = nul
     let bombAmount;
 
     if (isVirtualMode) {
-        let virtualGame = getVirtualGame();
+        let virtualGame = getVirtualGame(config.virtualGameConfig);
         field = virtualGame.field;
         bombAmount = virtualGame.bombAmount;
     } else {
