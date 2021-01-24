@@ -1326,10 +1326,7 @@ function sweep(fieldToSweep, bombAmount, withGuessing = true, doLog = true) {
                 outsider.probabilityOfZero = probabilityOfZero;
             });
 
-            outsideUnknowns = outsideUnknowns.sort((a, b) => {
-                return -(a.probabilityOfZero - b.probabilityOfZero);
-            });
-
+            outsideUnknowns = outsideUnknowns.sort((a, b) => -(a.probabilityOfZero - b.probabilityOfZero));
             let outsiderCandidate = outsideUnknowns[0];
 
             return {
