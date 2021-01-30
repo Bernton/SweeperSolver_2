@@ -1,4 +1,4 @@
-let SweepStates = { start: 0, solving: 1, stuck: 2, solved: 3, death: 4 };
+let SweepStates = { start: "start", solving: "solving", stuck: "stuck", solved: "solved", death: "death" };
 
 let AutoSweepConfig = {
     doLog: false,
@@ -1269,24 +1269,19 @@ function sweep(fieldToSweep, bombAmount, withGuessing = true, doLog = true) {
             });
 
             let unknownAmount = outsideUnknowns.length + candidateAmount;
-            let totalWeight = 0;
 
             combinationProbs.forEach(prob => {
                 let occurenceRatio = prob.occurences / binomialCoefficient(candidateAmount, prob.flagAmount);
                 let likelyhood = approxHypergeometricDistribution(unknownAmount, totalFlagsLeft, candidateAmount, prob.flagAmount);
                 prob.weight = occurenceRatio * likelyhood;
-                totalWeight += prob.weight;
             });
 
-            combinationProbs.forEach(prob => prob.normalWeight = prob.weight / totalWeight);
-            let candidateValues = new Array(candidates.length).fill(0);
+            let candidateValues = calculateCandidateValues(combinationProbs, candidates);
+            let cellProbs = convertToCellProbs(candidateValues, candidates);
+            return cellProbs;
+        }
 
-            combinationProbs.forEach(prob => {
-                prob.combination.forEach((value, i) => {
-                    candidateValues[i] += (value * prob.normalWeight) / candidates[i].clusterSize;
-                });
-            });
-
+        function convertToCellProbs(candidateValues, candidates) {
             let cellProbs = [];
 
             candidateValues.forEach((value, i) => {
@@ -1296,11 +1291,26 @@ function sweep(fieldToSweep, bombAmount, withGuessing = true, doLog = true) {
                         fraction: value,
                         score: value,
                         candidate: groupCell,
+                        clusterRoot: candidates[i]
                     });
                 });
             });
 
             return cellProbs;
+        }
+
+        function calculateCandidateValues(combinationProbs, candidates) {
+            let totalWeight = 0;
+            combinationProbs.forEach(prob => totalWeight += prob.weight);
+            let candidateValues = new Array(candidates.length).fill(0);
+
+            combinationProbs.forEach(prob => {
+                prob.combination.forEach((value, i) => {
+                    candidateValues[i] += (value * (prob.weight / totalWeight)) / candidates[i].clusterSize;
+                });
+            });
+
+            return candidateValues;
         }
 
         function calculateOutsiderCellProb(cellProbs) {
@@ -1315,7 +1325,7 @@ function sweep(fieldToSweep, bombAmount, withGuessing = true, doLog = true) {
             });
 
             let averageFlagsLeftOutside = totalFlagsLeft - averageFlagsInBorder;
-            let fractionForOutsideUnknowns = averageFlagsLeftOutside / outsideUnknowns.length;
+            let outsideUnknownsFraction = averageFlagsLeftOutside / outsideUnknowns.length;
 
             outsideUnknowns.forEach(outsider => {
                 let probabilityOfZero = 1;
@@ -1331,7 +1341,7 @@ function sweep(fieldToSweep, bombAmount, withGuessing = true, doLog = true) {
                     } else if (neighbor.isFlagged) {
                         probabilityOfBomb = 1;
                     } else if (outsideUnknowns.includes(neighbor)) {
-                        probabilityOfBomb = fractionForOutsideUnknowns;
+                        probabilityOfBomb = outsideUnknownsFraction;
                     }
 
                     probabilityOfZero *= (1 - probabilityOfBomb);
@@ -1344,22 +1354,27 @@ function sweep(fieldToSweep, bombAmount, withGuessing = true, doLog = true) {
             let outsiderCandidate = outsideUnknowns[0];
 
             return {
-                percentage: (fractionForOutsideUnknowns * 100).toFixed(2) + "%",
-                fraction: fractionForOutsideUnknowns,
-                score: fractionForOutsideUnknowns,
+                percentage: (outsideUnknownsFraction * 100).toFixed(2) + "%",
+                fraction: outsideUnknownsFraction,
+                score: outsideUnknownsFraction * 1.125,
                 candidate: outsiderCandidate,
-                isOutside: true
+                isOutsider: true
             };
         }
 
         function handleNoCertainResultFound(checkResult) {
             let cellProbs = calculateCandidateCellProbs(checkResult);
             let outsider = calculateOutsiderCellProb(cellProbs);
-            if (outsider) { cellProbs.push(outsider); }
-            evaluateCellProbs(cellProbs);
+            evaluateCellProbs(cellProbs, outsider);
         }
 
-        function evaluateCellProbs(cellProbs) {
+        function evaluateCellProbs(candidateCellProbs, outsider) {
+            let cellProbs = candidateCellProbs.slice(0);
+
+            if (outsider) {
+                cellProbs.push(outsider);
+            }
+
             cellProbs = cellProbs.sort((a, b) => a.score - b.score);
 
             if (withGuessing && cellProbs.length > 0) {
@@ -1385,9 +1400,12 @@ function sweep(fieldToSweep, bombAmount, withGuessing = true, doLog = true) {
                 });
 
                 cellProbs.forEach(cellProb => {
-                    let message = "#" + cellProb.placing + " " + formatCellProbCoords(cellProb) + ": " + cellProb.percentage;
+                    let message = "#" + cellProb.placing + " " +
+                        formatCellProbCoords(cellProb) + ": " +
+                        cellProb.percentage + " (Score: " +
+                        (cellProb.score * 100).toFixed(3) + ")";
 
-                    if (cellProb.isOutside) {
+                    if (cellProb.isOutsider) {
                         message += " - Outsider";
                     } else if (cellProb.candidate.clusterSize > 1) {
                         message += " - Cluster";
