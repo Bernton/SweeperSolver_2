@@ -4,9 +4,9 @@ let AutoSweepConfig = {
     doLog: false,
     isAutoSweepEnabled: false,
     isRiddleFinderMode: false,
-    isVirtualMode: false,
+    isRecordingStepStats: false,
+    isVirtualMode: true,
     virtualGameConfig: null,
-    isExtendedStats: false,
     batchSizeForVirtual: 1000,
     baseIdleTime: 0,
     solvingIdleTime: 0,
@@ -90,42 +90,40 @@ function formatLogGameStatsWithRaw() {
 }
 
 function formatLogGameStats(gamesIncluded = null, stats = AutoSweepStats, logRaw = false) {
-    let gameStats = stats.gameStats;
+    let gameStats = stats.gameStats.slice(0);
 
     if (gamesIncluded !== null && gamesIncluded > 0) {
         gameStats = gameStats.filter(c => c.index < gamesIncluded);
     }
 
+    gameStats = gameStats.filter(c => c.finishState);
+
     console.log("Stats for first " + gameStats.length + " games");
     logWinningPercentage();
 
-    if (stats.gameStats.length > 0 && stats.gameStats[0].stepStats) {
-        logGuessesPerGame();
-        logTimePerGame();
-        logTimePerStep();
-    }
+    logGuessesPerGame();
+    logTimePerGame();
+    logTimePerStep();
 
     if (logRaw) { console.log("Raw data: ", gameStats); }
 
     function logGuessesPerGame() {
-        let wasGuessStep = (step) => step.result.state === SweepStates.solving && step.result.solver === "3g";
-        let guessesPerGame = gameStats.map(g => g.stepStats.reduce((a, b) => a + Number(wasGuessStep(b)), 0));
+        let guessesPerGame = gameStats.map(g => g.guesses);
         let guessStats = mapStats(guessesPerGame);
         logStat("Average/Max guesses", guessStats.average.toFixed(2) + " / " + guessStats.max.toFixed(0));
     }
 
     function logTimePerGame() {
-        let timePerGame = gameStats.map(g => g.stepStats.reduce((a, b) => a + b.time, 0));
+        let timePerGame = gameStats.map(g => g.time);
         let timeStats = mapStats(timePerGame);
         logStat("Average/Max time", timeStats.average.toFixed(2) + " / " + timeStats.max.toFixed(2) + " ms");
     }
 
     function logTimePerStep() {
-        let stepTimeStatsMax = gameStats.reduce((a, b) => Math.max(a, (b.stepStats.reduce((a, b) => Math.max(a, b.time), 0))), 0);
+        let stepTimeStatsMax = gameStats.reduce((a, b) => Math.max(a, b.mostTimeStep), 0);
         logStat("Highest step time", stepTimeStatsMax.toFixed(2) + " ms");
 
-        let was3Step = (step) => step.result.state === SweepStates.solving && step.result.solver === "3";
-        let stepTimeStatsMax3 = gameStats.reduce((a, b) => Math.max(a, (b.stepStats.reduce((a, b) => Math.max(a, (was3Step(b) ? b.time : 0)), 0))), 0);
+        let stepTimeStatsMax3 = gameStats.reduce((a, b) => Math.max(a, b.mostTime3Step), 0);
         logStat("Highest [3] time", stepTimeStatsMax3.toFixed(2) + " ms");
     }
 
@@ -233,7 +231,10 @@ function autoSweep(config, stats) {
             config.lastSweepResult = sweepResult;
         }
 
-        executeInteractions(interactions, !isRiddle, config.isVirtualMode);
+        if (config.isAutoSweepEnabled || isRiddle) {
+            executeInteractions(interactions, !isRiddle, config.isVirtualMode);
+        }
+
         return idleTime;
     }
 
@@ -254,6 +255,10 @@ function autoSweep(config, stats) {
     function lastWasNewGameState(config) {
         return isNewGameState(config.lastSweepResult.state);
     }
+}
+
+function getBombArray(field) {
+    return field.reduce((A, B) => A.concat(B.reduce((a, b) => a.concat(b.isBomb ? true : false), [])), []);
 }
 
 function isNewGameState(state) {
@@ -507,30 +512,38 @@ function sweepPage(withGuessing = true, doLog = true, config = null, stats = nul
 
         if (!stats.gameStats[gameIndex]) {
             stats.gameStats[gameIndex] = {
-                index: gameIndex,
+                index: gameIndex
             };
 
-            if (config.isExtendedStats) {
-                stats.gameStats[gameIndex].stepStats = [];
-            }
+            stats.gameStats[gameIndex].stepStats = [];
         }
 
         let gameStats = stats.gameStats[gameIndex];
 
         if (!gameStats.finishState) {
-            if (config.isExtendedStats) {
-                gameStats.stepStats.push({
-                    result: {
-                        state: sweepResult.state,
-                        solver: sweepResult.solver
-                    }, time: sweepTime
-                });
-            }
+            gameStats.stepStats.push({
+                result: {
+                    state: sweepResult.state,
+                    solver: sweepResult.solver
+                }, time: sweepTime
+            });
 
             if (isNewGameState(sweepResult.state)) {
-                field.forEach(row => row.forEach(cell => delete cell.neighbors));
                 gameStats.finishState = sweepResult.state;
-                if (config.isExtendedStats) { gameStats.finishField = field; }
+                gameStats.bombArray = getBombArray(field);
+
+                let stepStats = gameStats.stepStats;
+
+                let wasGuessStep = (step) => step.result.state === SweepStates.solving && step.result.solver === "3g";
+                let was3Step = (step) => step.result.state === SweepStates.solving && step.result.solver === "3";
+                gameStats.guesses = stepStats.reduce((a, b) => a + Number(wasGuessStep(b)), 0);
+                gameStats.time = stepStats.reduce((a, b) => a + b.time, 0);
+                gameStats.mostTimeStep = stepStats.reduce((a, b) => Math.max(a, b.time), 0);
+                gameStats.mostTime3Step = stepStats.reduce((a, b) => Math.max(a, was3Step(b) ? b.time : 0), 0);
+
+                if (!config.isRecordingStepStats) {
+                    delete gameStats.stepStats;
+                }
             }
         }
     }
@@ -616,17 +629,18 @@ function sweep(fieldToSweep, bombAmount, withGuessing = true, doLog = true) {
             return onSolved();
         }
 
+
         if (checkTrivialFlags(field) || checkTrivialReveals(field)) {
             return onStandardSolving("0", "[0] Trivial cases");
         }
 
         let borderCells = getBorderCells(field);
 
-        if (checkSuffocations(field, borderCells)) {
+        if (checkSuffocations(borderCells)) {
             return onStandardSolving("1", "[1] Suffocations");
         }
 
-        if (checkDigitsFlagCombinations(field, borderCells)) {
+        if (checkDigitsFlagCombinations(borderCells)) {
             return onStandardSolving("2", "[2] Check digits flag combinations");
         }
 
@@ -790,7 +804,7 @@ function sweep(fieldToSweep, bombAmount, withGuessing = true, doLog = true) {
             }
 
             if (!resultInfo.certainResultFound) {
-                let combinedCheckResult = checkGroupingsCombined(groupingCheckResults);
+                let combinedCheckResult = mergeGroupingsCombinationsAndCheck(groupingCheckResults);
 
                 if (combinedCheckResult.certainResultFound) {
                     resultInfo.certainResultFound = true;
@@ -978,132 +992,290 @@ function sweep(fieldToSweep, bombAmount, withGuessing = true, doLog = true) {
             }
         }
 
-        function checkGrouping(grouping, groupingFlagsLeft) {
-            let digits = grouping.digits;
-            let candidates = clusterCandidates(grouping.unknowns);
-            let caseWithNoFlagsLeftFound = false;
+        function clusterDigitNeighbors(digits) {
+            digits.forEach(digit => digit.neighbors = digit.neighbors.filter(c => c.clusterGroup));
+        }
+
+        function setupCandidatesForConditions(candidates) {
+            candidates.forEach((candidate, i) => {
+                candidate.assignIndex = i;
+                candidate.conditions = [];
+                candidate.conditionedPeers = [];
+                candidate.conditionAmount = 0;
+                candidate.conditionValue = 0;
+            });
+        }
+
+        function getValidCombinationsForNeighbors(neighbors, flagsLeft) {
             let validCombinations = [];
+            let combination = Array(neighbors.length).fill(0);
+            let lastI = combination.length - 1;
+
+            while (true) {
+                combination[0] += 1;
+
+                for (let i = 0; i < lastI; i++) {
+                    if (combination[i] > neighbors[i].clusterSize) {
+                        combination[i] = 0;
+                        combination[i + 1] += 1;
+                    } else { break; }
+                }
+
+                if (combination[lastI] > neighbors[lastI].clusterSize) { break; }
+
+                if (combination.reduce((a, b) => a + b, 0) === flagsLeft) {
+                    validCombinations.push(combination.slice(0));
+                }
+            }
+
+            return validCombinations;
+        }
+
+        function addCandidateConditions(candidates, digits) {
+            clusterDigitNeighbors(digits);
+            setupCandidatesForConditions(candidates);
 
             digits.forEach(digit => {
-                digit.u = digit.unknownNeighborAmount;
-                digit.f = digit.flaggedNeighborAmount;
-            });
+                let flagsLeft = digit.value - digit.flaggedNeighborAmount;
+                let neighbors = digit.neighbors;
+                let validCombinations = getValidCombinationsForNeighbors(neighbors, flagsLeft);
 
-            let validCombinationNodes = [{
-                combination: [],
-                unknownsI: "u",
-                flagsI: "f",
-                flagsLeft: groupingFlagsLeft
-            }];
+                neighbors.forEach(neighbor => {
 
-            while (validCombinationNodes.length > 0) {
-                let node = validCombinationNodes.pop();
-                let candidate = candidates[node.combination.length];
-                let clusterSize = candidate.clusterSize;
+                    let condition = (assignment) => {
+                        for (let i = 0; i < validCombinations.length; i++) {
+                            let validCombination = validCombinations[i];
+                            let contraintMet = true;
 
-                for (let flagsToSet = 0; flagsToSet <= clusterSize; flagsToSet++) {
-                    let freesToSet = clusterSize - flagsToSet;
+                            for (let j = 0; j < validCombination.length; j++) {
+                                let value = assignment[neighbors[j].assignIndex];
 
-                    let areValidFreesToSet = true;
-
-                    if (freesToSet > 0) {
-                        candidate.neighbors.forEach(digitNeighbor => {
-                            if (areValidFreesToSet && ((digitNeighbor[node.unknownsI] - freesToSet) + digitNeighbor[node.flagsI]) < digitNeighbor.value) {
-                                areValidFreesToSet = false;
-                            }
-                        });
-                    }
-
-                    if (areValidFreesToSet) {
-                        let areValidFlagsToSet = (node.flagsLeft >= flagsToSet);
-
-                        if (!areValidFlagsToSet) { caseWithNoFlagsLeftFound = true; }
-
-                        if (areValidFlagsToSet && flagsToSet > 0) {
-                            candidate.neighbors.forEach(digitNeighbor => {
-                                if (areValidFlagsToSet && (digitNeighbor[node.flagsI] + flagsToSet) > digitNeighbor.value) {
-                                    areValidFlagsToSet = false;
+                                if (value !== null && value !== validCombination[j]) {
+                                    contraintMet = false;
+                                    break;
                                 }
-                            });
-                        }
+                            }
 
-                        if (areValidFlagsToSet) {
-                            let newCombination = node.combination.slice(0);
-                            newCombination.push(flagsToSet);
-
-                            if (node.combination.length + 1 < candidates.length) {
-                                let newUnknownsI = node.unknownsI + String(flagsToSet);
-                                let newFlagsI = node.flagsI + String(flagsToSet);
-
-                                digits.forEach(digit => {
-                                    digit[newUnknownsI] = digit[node.unknownsI];
-                                    digit[newFlagsI] = digit[node.flagsI];
-                                });
-
-                                candidate.neighbors.forEach(digitNeighbor => {
-                                    digitNeighbor[newUnknownsI] -= clusterSize;
-                                    digitNeighbor[newFlagsI] += flagsToSet;
-                                });
-
-                                validCombinationNodes.push({
-                                    combination: newCombination,
-                                    unknownsI: newUnknownsI,
-                                    flagsI: newFlagsI,
-                                    flagsLeft: (node.flagsLeft - flagsToSet)
-                                });
-                            } else {
-                                validCombinations.push(newCombination);
+                            if (contraintMet) {
+                                return true;
                             }
                         }
+
+                        return false;
+                    };
+
+                    addConditionedPeers(neighbor, neighbors);
+                    neighbor.conditions.push(condition);
+                    neighbor.conditionAmount += 1;
+                    neighbor.conditionValue += neighbors.reduce((a, b) => a + (b.clusterSize - 1) / (2 + a), 0);
+                });
+            });
+        }
+
+        function addConditionedPeers(candidate, peers) {
+            peers.forEach(peer => {
+                if (peer !== candidate && !candidate.conditionedPeers.includes(peer)) {
+                    candidate.conditionedPeers.push(peer);
+                }
+            });
+        }
+
+        function checkGrouping(grouping, groupingFlagsLeft) {
+            let candidates = clusterCandidates(grouping.unknowns);
+            addCandidateConditions(candidates, grouping.digits);
+            let validCombinations = searchValidCombinations(candidates, groupingFlagsLeft);
+            return searchCertainResult(candidates, validCombinations, groupingFlagsLeft);
+        }
+
+        function createRootAssignmentNode(candidates) {
+            let rootAssignment = Array(candidates.length).fill(null);
+            let rootLegalValues = Array(candidates.length).fill(null);
+
+            for (let assignIndex = 0; assignIndex < rootAssignment.length; assignIndex++) {
+                let legalValues = [];
+
+                for (let assignValue = 0; assignValue <= candidates[assignIndex].clusterSize; assignValue++) {
+                    if (isValidAssignmentValue(rootAssignment, candidates, assignIndex, assignValue)) {
+                        legalValues.push(assignValue);
                     }
                 }
 
-                digits.forEach(digit => {
-                    delete digit[node.unknownsI];
-                    delete digit[node.flagsI];
-                });
+                rootLegalValues[assignIndex] = legalValues;
             }
 
-            let searchResult = searchCertainResult(candidates, validCombinations, groupingFlagsLeft);
-            searchResult.caseWithNoFlagsLeftFound = caseWithNoFlagsLeftFound;
-            return searchResult;
+            return { assignment: rootAssignment, legalValues: rootLegalValues, flagAmount: 0 };
+        }
+
+        function searchValidCombinations(candidates, flagsLeft) {
+            let validAssignNodes = [createRootAssignmentNode(candidates)];
+            let validCombinations = [];
+
+            // let iterationCount = 0;
+            // console.time("Iterations");
+
+            while (validAssignNodes.length > 0) {
+                // iterationCount += 1;
+
+                let assignNode = validAssignNodes.pop();
+                let newNodesAreLeafs = getUnassignedAmount(assignNode.assignment) === 1;
+                let newNodes = searchAssignNode(candidates, assignNode, flagsLeft, newNodesAreLeafs);
+                let associatedArray = (newNodesAreLeafs ? validCombinations : validAssignNodes);
+                newNodes.forEach(newNode => associatedArray.push(newNode));
+            }
+
+            // console.timeEnd("Iterations");
+            // console.log("iterationCount:", iterationCount);
+            // console.log("validAssignments:", validCombinations);
+
+            return validCombinations;
+        }
+
+        function searchAssignNode(candidates, sourceNode, flagsLeft, newNodesAreLeafs) {
+            let newNodes = [];
+            let nextValueToSet = findBestValueToSet(candidates, sourceNode);
+
+            nextValueToSet.legalValues.forEach(legalValue => {
+                let newAssignment = createArrayWithAssignment(sourceNode.assignment, nextValueToSet.index, legalValue);
+                let newFlagAmount = sourceNode.flagAmount + legalValue;
+
+                if (newFlagAmount <= flagsLeft) {
+                    if (newNodesAreLeafs) {
+                        newNodes.push({ values: newAssignment, flagAmount: newFlagAmount });
+                    } else {
+                        let validChildNode = findValidChildNode(candidates, sourceNode, newAssignment, newFlagAmount, nextValueToSet);
+
+                        if (validChildNode) {
+                            newNodes.push(validChildNode);
+                        }
+                    }
+                }
+            });
+
+            return newNodes;
+        }
+
+        function getNewLegalValues(candidates, sourceNode, assignment, valueToSet) {
+            let conditionedPeers = candidates[valueToSet.index].conditionedPeers;
+            let newLegalValues = createArrayWithAssignment(sourceNode.legalValues, valueToSet.index, null);
+
+            for (let peerI = 0; peerI < conditionedPeers.length; peerI++) {
+                let peerIndex = conditionedPeers[peerI].assignIndex;
+
+                if (newLegalValues[peerIndex] !== null) {
+                    let previousLegalValues = newLegalValues[peerIndex];
+                    let legalValues = [];
+
+                    previousLegalValues.forEach(value => {
+                        if (isValidAssignmentValue(assignment, candidates, peerIndex, value)) {
+                            legalValues.push(value);
+                        }
+                    });
+
+                    if (legalValues.length > 0) {
+                        newLegalValues[peerIndex] = legalValues;
+                    } else {
+                        return null;
+                    }
+                }
+            }
+
+            return newLegalValues;
+        }
+
+        function findValidChildNode(candidates, sourceNode, assignment, flagAmount, valueToSet) {
+            let newLegalValues = getNewLegalValues(candidates, sourceNode, assignment, valueToSet);
+
+            if (newLegalValues) {
+                return createAssignNode(assignment, newLegalValues, flagAmount);
+            }
+        }
+
+        function findBestValueToSet(candidates, sourceNode) {
+            let indexOfBest;
+            let legalValuesOfBest = null;
+
+            for (let i = 0; i < sourceNode.assignment.length; i++) {
+                if (sourceNode.assignment[i] === null) {
+                    let legalValues = sourceNode.legalValues[i];
+
+                    if (legalValuesOfBest === null ||
+                        isBetterValueToSet(legalValues, candidates[i], legalValuesOfBest, candidates[indexOfBest])) {
+                        legalValuesOfBest = legalValues;
+                        indexOfBest = i;
+                    }
+                }
+            }
+
+            return { index: indexOfBest, legalValues: legalValuesOfBest };
+        }
+
+        function isBetterValueToSet(legalValues, candidate, bestLegalValues, bestCandidate) {
+            if (legalValues.length < bestLegalValues.length) {
+                return true;
+            }
+
+            if (legalValues.length === bestLegalValues.length) {
+                if (candidate.conditionAmount > bestCandidate.conditionAmount) {
+                    return true;
+                }
+
+                if (candidate.conditionAmount === bestCandidate.conditionAmount) {
+                    if (candidate.conditionValue < bestCandidate.conditionValue) {
+                        return true;
+                    }
+                }
+            }
+
+            return false;
+        }
+
+        function createAssignNode(assignment, legalValues, flagAmount = 0) {
+            return {
+                assignment: assignment,
+                legalValues: legalValues,
+                flagAmount: flagAmount
+            };
+        }
+
+        function createArrayWithAssignment(assignment, index, value) {
+            let createdArray = assignment.slice(0);
+            createdArray[index] = value;
+            return createdArray;
+        }
+
+        function isValidAssignmentValue(assignment, candidates, index, value) {
+            let testAssignment = createArrayWithAssignment(assignment, index, value);
+            return isValidAssignmentChange(testAssignment, candidates, index);
+        }
+
+        function getUnassignedAmount(assignment) {
+            return assignment.reduce((a, b) => a + (b === null ? 1 : 0), 0);
+        }
+
+        function isValidAssignmentChange(assignment, candidates, changedIndex) {
+            let isValid = true;
+            let conditions = candidates[changedIndex].conditions;
+
+            for (let i = 0; i < conditions.length; i++) {
+                let condition = conditions[i];
+
+                if (!condition(assignment)) {
+                    isValid = false;
+                    break;
+                }
+            }
+
+            return isValid;
+        }
+
+        function getLeastFlagAmount(validCombinations) {
+            let leastFlags = Number.MAX_VALUE;
+            validCombinations.forEach(c => leastFlags = (c.flagAmount < leastFlags) ? c.flagAmount : leastFlags);
+            return leastFlags;
         }
 
         function searchCertainResult(candidates, validCombinations, groupingFlagsLeft) {
-            let certainResultFound = false;
-            let occurencesValues = Array(candidates.length).fill(0);
-            let occurenceCounts = [];
-            let totalOccurences = 0;
-
-            let leastBombs = Number.MAX_VALUE;
-            let mostBombs = 0;
-
-            validCombinations.forEach(validCombination => {
-                let occurenceCount = 1;
-                let bombs = 0;
-
-                validCombination.forEach((flagValue, j) => {
-                    let clusterSize = candidates[j].clusterSize;
-
-                    if (clusterSize > 1) {
-                        let combinationAmount = binomialCoefficient(clusterSize, flagValue);
-                        occurenceCount *= combinationAmount;
-                    }
-
-                    bombs += flagValue;
-                });
-
-                validCombination.forEach((flagValue, j) => {
-                    occurencesValues[j] += ((flagValue / candidates[j].clusterSize) * occurenceCount);
-                });
-
-                occurenceCounts.push(occurenceCount);
-                totalOccurences += occurenceCount;
-
-                leastBombs = Math.min(leastBombs, bombs);
-                mostBombs = Math.max(mostBombs, bombs);
-            });
-
+            let leastBombs = getLeastFlagAmount(validCombinations);
             let noBombsLeftForRest = (leastBombs === groupingFlagsLeft && outsideUnknowns.length > 0);
 
             if (noBombsLeftForRest) {
@@ -1116,50 +1288,55 @@ function sweep(fieldToSweep, bombAmount, withGuessing = true, doLog = true) {
                 });
             }
 
-            let fractionOfFlag = occurencesValues.map(c => c / totalOccurences);
-            let cellProbs = [];
+            candidates.forEach((candidate, candidateI) => {
+                candidate.isCertainReveal = true;
+                candidate.isCertainFlag = true;
 
-            candidates.forEach((candidate, i) => {
-                cellProbs.push({
-                    fraction: fractionOfFlag[i],
-                    candidate: candidate
-                });
-            });
+                for (let i = 0; i < validCombinations.length; i++) {
+                    let value = validCombinations[i].values[candidateI];
 
-            let anyZeroPercent = false;
-
-            cellProbs.forEach(cellProb => {
-                if (cellProb.fraction === 0) {
-                    if (!anyZeroPercent) {
-                        resultInfo.messages.push("Clickables found - no bomb in any valid combination");
-                        anyZeroPercent = true;
+                    if (value !== 0) {
+                        candidate.isCertainReveal = false;
                     }
 
-                    cellProb.candidate.clusterGroup.forEach(clusterCell => revealCell(clusterCell));
+                    if (value !== candidate.clusterSize) {
+                        candidate.isCertainFlag = false;
+                    }
+
+                    if (!candidate.isCertainReveal && !candidate.isCertainFlag) {
+                        break;
+                    }
                 }
             });
 
-            if (noBombsLeftForRest || anyZeroPercent) {
-                certainResultFound = true;
-            } else {
-                cellProbs.forEach(cellProb => {
-                    if (cellProb.fraction === 1) {
-                        if (!certainResultFound) {
-                            resultInfo.messages.push("Flags found - bomb in every valid combination");
-                            certainResultFound = true;
-                        }
+            let anyCertainReveal = false;
+            let anyCertainFlag = false;
 
-                        cellProb.candidate.clusterGroup.forEach(clusterCell => flagCell(clusterCell));
+            candidates.forEach(candidate => {
+                if (candidate.isCertainReveal) {
+                    if (!anyCertainReveal) {
+                        resultInfo.messages.push("Clickables found - no bomb in any valid combination");
+                        anyCertainReveal = true;
                     }
-                });
-            }
+
+                    candidate.clusterGroup.forEach(clusterCell => revealCell(clusterCell));
+                } else if (candidate.isCertainFlag) {
+                    if (!anyCertainFlag) {
+                        resultInfo.messages.push("Flags found - bomb in every valid combination");
+                        anyCertainFlag = true;
+                    }
+
+                    candidate.clusterGroup.forEach(clusterCell => flagCell(clusterCell));
+                }
+            });
+
+            let certainResultFound = noBombsLeftForRest || anyCertainReveal || anyCertainFlag;
 
             return {
                 certainResultFound: certainResultFound,
                 validCombinations: validCombinations,
                 candidates: candidates,
                 leastBombs: leastBombs,
-                mostBombs: mostBombs
             };
         }
 
@@ -1182,98 +1359,174 @@ function sweep(fieldToSweep, bombAmount, withGuessing = true, doLog = true) {
             }
         }
 
-        function mergeGroupingsCombinationsAndCheck(groupingCheckResults) {
-            let mergedValidCombinations = [];
-            let mergedCandidates = [];
-            let caseWithNoFlagsLeftFound = false;
+        function setCheckResultSummaries(groupingCheckResults) {
+            groupingCheckResults.forEach(checkResult => {
+                let summaries = {};
+                let summaryList = [];
 
-            groupingCheckResults.forEach((groupingSearchResult, i) => {
-                let newValidCombinations = [];
-                let isLastToMerge = (i === (groupingCheckResults.length - 1));
+                checkResult.validCombinations.forEach(comb => {
+                    let summary;
 
-                if (mergedCandidates.length > 0) {
-                    mergedValidCombinations.forEach(currentCombination => {
-                        groupingSearchResult.validCombinations.forEach(combinationToMerge => {
-                            let newCombination = currentCombination.concat(combinationToMerge);
-                            addNewCombinationIfValid(newValidCombinations, newCombination, isLastToMerge);
-                        });
-                    });
-                } else {
-                    groupingSearchResult.validCombinations.forEach(combinationToMerge => {
-                        addNewCombinationIfValid(newValidCombinations, combinationToMerge, isLastToMerge);
-                    });
-                }
-
-                mergedValidCombinations = newValidCombinations;
-
-                groupingSearchResult.candidates.forEach(candidate => {
-                    mergedCandidates.push(candidate);
-                });
-            });
-
-            let searchResult = searchCertainResult(mergedCandidates, mergedValidCombinations, totalFlagsLeft);
-            searchResult.caseWithNoFlagsLeftFound = caseWithNoFlagsLeftFound;
-            return searchResult;
-
-            function addNewCombinationIfValid(toAddTo, newCombination, isLastToMerge) {
-                let isValid = true;
-                let flagAmount = 0;
-
-                for (let i = 0; i < newCombination.length; i++) {
-                    let combFlagAmount = newCombination[i];
-
-                    flagAmount += combFlagAmount;
-
-                    if (flagAmount > totalFlagsLeft) {
-                        caseWithNoFlagsLeftFound = true;
-                        isValid = false;
-                        break;
+                    if (summaries.hasOwnProperty(comb.flagAmount)) {
+                        summary = summaries[comb.flagAmount];
+                    } else {
+                        summary = { values: Array(comb.values.length).fill(0), flagAmount: comb.flagAmount, mergedCount: 0 };
+                        summaries[comb.flagAmount] = summary;
+                        summaryList.push(summary);
                     }
-                }
 
-                if (isLastToMerge && isValid && (flagAmount + outsideUnknowns.length) < totalFlagsLeft) {
-                    isValid = false;
-                }
+                    let occurenceCount = 1;
+                    comb.values.forEach((value, i) => occurenceCount *= binomialCoefficient(checkResult.candidates[i].clusterSize, value));
 
-                if (isValid) {
-                    toAddTo.push(newCombination);
-                }
-            }
+                    summary.mergedCount += occurenceCount;
+                    comb.values.forEach((value, i) => summary.values[i] += value * occurenceCount);
+                });
+
+                checkResult.summaries = summaryList;
+            });
         }
 
-        function checkGroupingsCombined(groupingCheckResults) {
-            let caseWithNoFlagsLeftFound = groupingCheckResults.reduce((a, b) => a || b.caseWithNoFlagsLeftFound, false);
-            let checkResult = mergeGroupingsCombinationsAndCheck(groupingCheckResults);
+        function mergeGroupingsCombinationsAndCheck(groupingCheckResults) {
+            setCheckResultSummaries(groupingCheckResults);
 
-            if (caseWithNoFlagsLeftFound) {
-                resultInfo.messages.push("Case with no flags left found");
-            } else if (checkResult.caseWithNoFlagsLeftFound) {
-                resultInfo.messages.push("Case with no flags left found (after merge)");
+            let mergedSummaries = [];
+
+            groupingCheckResults.forEach(checkResult => {
+                if (mergedSummaries.length > 0) {
+
+                    let newSummaries = {};
+                    let newSummaryList = [];
+
+                    mergedSummaries.forEach(rootSummary => {
+                        checkResult.summaries.forEach(leafSummary => {
+                            let newFlagAmount = rootSummary.flagAmount + leafSummary.flagAmount;
+
+                            if (newFlagAmount <= totalFlagsLeft) {
+                                let rootValues = rootSummary.values.slice(0);
+
+                                for (let i = 0; i < rootValues.length; i++) {
+                                    rootValues[i] *= leafSummary.mergedCount;
+                                }
+
+                                let leafValues = leafSummary.values.slice(0);
+
+                                for (let i = 0; i < leafValues.length; i++) {
+                                    leafValues[i] *= rootSummary.mergedCount;
+                                }
+
+                                let newValues = rootValues.concat(leafValues);
+
+                                let newMergedCount = rootSummary.mergedCount * leafSummary.mergedCount;
+                                let newSummary = { values: newValues, flagAmount: newFlagAmount, mergedCount: newMergedCount };
+
+                                if (newSummaries.hasOwnProperty(newFlagAmount)) {
+                                    let baseSummary = newSummaries[newFlagAmount];
+                                    baseSummary.mergedCount += newSummary.mergedCount;
+                                    newSummary.values.forEach((value, i) => baseSummary.values[i] += value);
+                                } else {
+                                    newSummaries[newFlagAmount] = newSummary;
+                                    newSummaryList.push(newSummary);
+                                }
+                            }
+                        });
+                    });
+
+                    mergedSummaries = newSummaryList;
+                } else {
+                    mergedSummaries = checkResult.summaries;
+                }
+            });
+
+            mergedSummaries = mergedSummaries.filter(summary => (summary.flagAmount + outsideUnknowns.length) >= totalFlagsLeft);
+
+            let mergedCandidates = [];
+            groupingCheckResults.forEach(checkResult => mergedCandidates = mergedCandidates.concat(checkResult.candidates));
+
+            let searchResult = searchCertainResultForSummaries(mergedCandidates, mergedSummaries, totalFlagsLeft);
+            return searchResult;
+        }
+
+        function searchCertainResultForSummaries(candidates, mergedSummaries) {
+            let totalSummary = { values: Array(candidates.length).fill(0), mergedCount: 0 };
+            let leastBombs = Number.MAX_VALUE;
+
+            mergedSummaries.forEach(summary => {
+                summary.values.forEach((value, i) => totalSummary.values[i] += value);
+                totalSummary.mergedCount += summary.mergedCount;
+                leastBombs = (summary.flagAmount < leastBombs) ? summary.flagAmount : leastBombs;
+            });
+
+            let noBombsLeftForRest = (leastBombs === totalFlagsLeft && outsideUnknowns.length > 0);
+
+            if (noBombsLeftForRest) {
+                resultInfo.messages.push("Clickables found - no bombs left for non candidates");
+
+                applyToCells(field, cell => {
+                    if (cell.isHidden && !cell.isFlagged && !cell.isBorderCell) {
+                        revealCell(cell);
+                    }
+                });
             }
 
-            return checkResult;
+            candidates.forEach((candidate, candidateI) => {
+                candidate.isCertainReveal = true;
+                candidate.isCertainFlag = true;
+
+                let value = totalSummary.values[candidateI];
+
+                if (value !== 0) {
+                    candidate.isCertainReveal = false;
+                }
+
+                if (value !== totalSummary.mergedCount * candidate.clusterSize) {
+                    candidate.isCertainFlag = false;
+                }
+            });
+
+            let anyCertainReveal = false;
+            let anyCertainFlag = false;
+
+            candidates.forEach(candidate => {
+                if (candidate.isCertainReveal) {
+                    if (!anyCertainReveal) {
+                        resultInfo.messages.push("Clickables found - no bomb in any valid combination");
+                        anyCertainReveal = true;
+                    }
+
+                    candidate.clusterGroup.forEach(clusterCell => revealCell(clusterCell));
+                } else if (candidate.isCertainFlag) {
+                    if (!anyCertainFlag) {
+                        resultInfo.messages.push("Flags found - bomb in every valid combination");
+                        anyCertainFlag = true;
+                    }
+
+                    candidate.clusterGroup.forEach(clusterCell => flagCell(clusterCell));
+                }
+            });
+
+            let certainResultFound = noBombsLeftForRest || anyCertainReveal || anyCertainFlag;
+
+            return {
+                certainResultFound: certainResultFound,
+                mergedSummaries: mergedSummaries,
+                candidates: candidates,
+                leastBombs: leastBombs,
+            };
         }
 
         function calculateCandidateCellProbs(checkResult) {
             let candidates = checkResult.candidates;
             let candidateAmount = candidates.reduce((a, b) => a + b.clusterSize, 0);
-
-            let combinationProbs = checkResult.validCombinations.map(validCombination => {
-                return {
-                    combination: validCombination,
-                    flagAmount: validCombination.reduce((a, b) => a + b),
-                    occurences: validCombination.reduce((a, b, i) => {
-                        return a * binomialCoefficient(candidates[i].clusterSize, b);
-                    }, 1)
-                };
-            });
-
             let unknownAmount = outsideUnknowns.length + candidateAmount;
+            let combinationProbs = checkResult.mergedSummaries;
 
             combinationProbs.forEach(prob => {
-                let occurenceRatio = prob.occurences / binomialCoefficient(candidateAmount, prob.flagAmount);
-                let likelyhood = approxHypergeometricDistribution(unknownAmount, totalFlagsLeft, candidateAmount, prob.flagAmount);
-                prob.weight = occurenceRatio * likelyhood;
+                let distribution = approxHypergeometricDistribution(unknownAmount, totalFlagsLeft, candidateAmount, prob.flagAmount);
+                prob.weight = prob.mergedCount * distribution / binomialCoefficient(candidateAmount, prob.flagAmount);
+
+                for (let i = 0; i < prob.values.length; i++) {
+                    prob.values[i] /= (prob.mergedCount * candidates[i].clusterSize);
+                }
             });
 
             let candidateValues = calculateCandidateValues(combinationProbs, candidates);
@@ -1289,7 +1542,6 @@ function sweep(fieldToSweep, bombAmount, withGuessing = true, doLog = true) {
                     cellProbs.push({
                         percentage: (value * 100).toFixed(2) + "%",
                         fraction: value,
-                        score: value,
                         candidate: groupCell,
                         clusterRoot: candidates[i]
                     });
@@ -1301,12 +1553,13 @@ function sweep(fieldToSweep, bombAmount, withGuessing = true, doLog = true) {
 
         function calculateCandidateValues(combinationProbs, candidates) {
             let totalWeight = 0;
+            combinationProbs = combinationProbs.sort((a, b) => a.weight - b.weight);
             combinationProbs.forEach(prob => totalWeight += prob.weight);
             let candidateValues = new Array(candidates.length).fill(0);
 
             combinationProbs.forEach(prob => {
-                prob.combination.forEach((value, i) => {
-                    candidateValues[i] += (value * (prob.weight / totalWeight)) / candidates[i].clusterSize;
+                prob.values.forEach((value, i) => {
+                    candidateValues[i] += value * (prob.weight / totalWeight);
                 });
             });
 
@@ -1356,7 +1609,6 @@ function sweep(fieldToSweep, bombAmount, withGuessing = true, doLog = true) {
             return {
                 percentage: (outsideUnknownsFraction * 100).toFixed(2) + "%",
                 fraction: outsideUnknownsFraction,
-                score: outsideUnknownsFraction * 1.125,
                 candidate: outsiderCandidate,
                 isOutsider: true
             };
@@ -1368,14 +1620,17 @@ function sweep(fieldToSweep, bombAmount, withGuessing = true, doLog = true) {
             evaluateCellProbs(cellProbs, outsider);
         }
 
+        function setCellProbScoresAndSort(cellProbs) {
+            cellProbs.forEach(cellProb => {
+                cellProb.score = cellProb.fraction * (cellProb.isOutsider ? 1.125 : 1);
+            });
+
+            return cellProbs.sort((a, b) => a.score - b.score);
+        }
+
         function evaluateCellProbs(candidateCellProbs, outsider) {
-            let cellProbs = candidateCellProbs.slice(0);
-
-            if (outsider) {
-                cellProbs.push(outsider);
-            }
-
-            cellProbs = cellProbs.sort((a, b) => a.score - b.score);
+            let cellProbs = createAllCellProbs(candidateCellProbs, outsider);
+            cellProbs = setCellProbScoresAndSort(cellProbs);
 
             if (withGuessing && cellProbs.length > 0) {
                 let lowestCellProb = cellProbs[0];
@@ -1425,6 +1680,12 @@ function sweep(fieldToSweep, bombAmount, withGuessing = true, doLog = true) {
                 let cell = cellProb.candidate;
                 return "(" + (cell.y + 1) + "_" + (cell.x + 1) + ")";
             }
+        }
+
+        function createAllCellProbs(candidateCellProbs, outsider) {
+            let allCellProbs = candidateCellProbs.slice(0);
+            if (outsider) { allCellProbs.push(outsider); }
+            return allCellProbs;
         }
 
         function getOutsideUnknowns() {
@@ -1495,82 +1756,97 @@ function sweep(fieldToSweep, bombAmount, withGuessing = true, doLog = true) {
         return trueForAll;
     }
 
-    function borderDigitsValid(digits) {
-        let isValid = true;
+    function getBinaryAssignments(valueAmount, amountOfOnes) {
+        let binaryAssignments = [];
+        let assignment = Array(valueAmount).fill(0);
+        let lastI = assignment.length - 1;
 
-        digits.forEach(digit => {
-            if (isValid) {
-                let flagsLeft = digit.value - digit.flaggedNeighborAmount;
-
-                digit.neighbors.forEach(neighbor => {
-                    if (isValid && neighbor.isFlagged) {
-                        flagsLeft -= 1;
-
-                        if (flagsLeft < 0) {
-                            isValid = false;
-                        }
-                    }
-                });
+        while (true) {
+            for (let i = 0; i < lastI; i++) {
+                if (assignment[i] > 1) {
+                    assignment[i] = 0;
+                    assignment[i + 1] += 1;
+                } else { break; }
             }
-        });
 
-        return isValid;
+            if (assignment[lastI] > 1) { break; }
+
+            if (amountOfOnes === null || assignment.reduce((a, b) => a + b, 0) === amountOfOnes) {
+                binaryAssignments.push(assignment.slice(0));
+            }
+
+            assignment[0] += 1;
+        }
+
+        return binaryAssignments;
     }
 
-    function checkDigitsFlagCombinations(field, borderCells) {
-        let flagsFound = false;
-        let digitsLength = borderCells.digits.length;
+    function checkDigitsFlagCombinations(borderCells) {
+        let interactionFound = false;
+        let digits = borderCells.digits;
 
-        for (let i = 0; i < digitsLength; i++) {
-            let digits = getBorderCells(field).digits;
-            let digit = digits[i];
+        digits.forEach(digit => {
+            let freeSpots = digit.neighbors;
+            let flagAmount = (digit.value - digit.flaggedNeighborAmount);
+            let assignments = getBinaryAssignments(freeSpots.length, flagAmount);
+            let validAssignments = [];
 
-            let unknownNeighborAmount = digit.unknownNeighborAmount;
-            let combinationAmount = (1 << unknownNeighborAmount);
-            let validStateAmount = 0;
-            let flagsLeft = (digit.value - digit.flaggedNeighborAmount);
-            let flagCandidates = [];
+            assignments.forEach(assignment => {
+                let assignmentValid = true;
+                let flaggedNeighborCounts = {};
 
-            digit.neighbors.forEach(flagCandidate => {
-                flagCandidate.includedCount = 0;
-                flagCandidates.push(flagCandidate);
+                for (let i = 0; i < assignment.length && assignmentValid; i++) {
+                    if (assignment[i] === 0) {
+                        continue;
+                    }
+
+                    let freeSpot = freeSpots[i];
+
+                    freeSpot.neighbors.forEach(digitNeighbor => {
+                        if (assignmentValid && digitNeighbor !== digit) {
+                            if (digitNeighbor.value < (digitNeighbor.flaggedNeighborAmount + 1)) {
+                                assignmentValid = false;
+                            } else {
+                                let index = getCellCoords(digitNeighbor);
+
+                                if (flaggedNeighborCounts.hasOwnProperty(index)) {
+                                    flaggedNeighborCounts[index] += 1;
+
+                                    if (digitNeighbor.value < (digitNeighbor.flaggedNeighborAmount + flaggedNeighborCounts[index])) {
+                                        assignmentValid = false;
+                                    }
+                                } else {
+                                    flaggedNeighborCounts[index] = 1;
+                                }
+                            }
+                        }
+                    });
+                }
+
+                if (assignmentValid) {
+                    validAssignments.push(assignment);
+                }
             });
 
-            for (let mask = 0; mask < combinationAmount; mask++) {
-                let bitwiseOnes = countBitwiseOnes(mask);
-
-                if (bitwiseOnes === flagsLeft) {
-                    for (let unknownI = 0; unknownI < unknownNeighborAmount; unknownI++) {
-                        let isOneAtUnknownI = ((1 << unknownI) & mask) !== 0;
-                        flagCandidates[unknownI].isFlagged = isOneAtUnknownI;
-                        flagCandidates[unknownI].isUnknown = !isOneAtUnknownI;
-                    }
-
-                    if (borderDigitsValid(digits)) {
-                        flagCandidates.forEach(flagCandidate => {
-                            if (flagCandidate.isFlagged) {
-                                flagCandidate.includedCount += 1;
-                            }
-                        });
-
-                        validStateAmount += 1;
-                    }
-                }
+            if (validAssignments.length === 0) {
+                throw new Error("No valid assignments for digit.");
             }
 
-            flagCandidates.forEach(flagCandidate => {
-                if (flagCandidate.includedCount === validStateAmount) {
-                    flagCell(flagCandidate);
-                    flagsFound = true;
+            let validAssignmentsSum = Array(freeSpots.length).fill(0);
+            validAssignments.forEach(assign => assign.forEach((value, i) => validAssignmentsSum[i] += value));
+
+            validAssignmentsSum.forEach((assignmentSum, i) => {
+                if (assignmentSum === 0) {
+                    revealCell(freeSpots[i]);
+                    interactionFound = true;
+                } else if (assignmentSum === validAssignments.length) {
+                    flagCell(freeSpots[i]);
+                    interactionFound = true;
                 }
             });
-        }
+        });
 
-        return flagsFound;
-
-        function countBitwiseOnes(number) {
-            return number.toString(2).replace(/0/g, "").length;
-        }
+        return interactionFound;
     }
 
     function getBorderCells(field) {
@@ -1637,55 +1913,59 @@ function sweep(fieldToSweep, bombAmount, withGuessing = true, doLog = true) {
         };
     }
 
-    function checkSuffocations(field, borderCells) {
+    function checkSuffocations(borderCells) {
         let suffocationsFound = false;
-        let unknownsLength = borderCells.unknowns.length;
+        let unknowns = borderCells.unknowns;
 
-        for (let i = 0; i < unknownsLength; i++) {
-            let unknowns = getBorderCells(field).unknowns;
-            let assumedFlag = unknowns[i];
-            assumedFlag.isUnknown = false;
-            assumedFlag.isFlagged = true;
-
+        unknowns.forEach(assumedFlag => {
             let filledDigits = [];
 
-            assumedFlag.neighbors.forEach(neighbor => {
-                neighbor.flaggedNeighborAmount += 1;
-                neighbor.unknownNeighborAmount -= 1;
-
-                if (neighbor.flaggedNeighborAmount === neighbor.value) {
-                    filledDigits.push(neighbor);
+            assumedFlag.neighbors.forEach(digitNeighbor => {
+                if (digitNeighbor.flaggedNeighborAmount + 1 === digitNeighbor.value) {
+                    filledDigits.push(digitNeighbor);
                 }
             });
 
             if (filledDigits.length === 0) {
-                continue;
+                return;
             }
 
             let filledDigitsUnknownNeighbors = [];
 
             filledDigits.forEach(filledDigit => {
-                filledDigit.neighbors.forEach(neighbor => {
-                    if (neighbor.isUnknown && !filledDigitsUnknownNeighbors.includes(neighbor)) {
-                        filledDigitsUnknownNeighbors.push(neighbor);
+                filledDigit.neighbors.forEach(unknownNeighbor => {
+                    if (unknownNeighbor !== assumedFlag && !filledDigitsUnknownNeighbors.includes(unknownNeighbor)) {
+                        filledDigitsUnknownNeighbors.push(unknownNeighbor);
                     }
                 });
             });
 
             if (filledDigitsUnknownNeighbors.length === 0) {
-                continue;
+                return;
             }
 
             let suffocationFound = false;
+            let suffocateCounts = {};
 
             filledDigitsUnknownNeighbors.forEach(unknownNeighbor => {
                 unknownNeighbor.neighbors.forEach(digitToSuffocate => {
                     if (!suffocationFound && !filledDigits.includes(digitToSuffocate)) {
-                        digitToSuffocate.unknownNeighborAmount -= 1;
                         let flagsLeft = digitToSuffocate.value - digitToSuffocate.flaggedNeighborAmount;
 
-                        if (flagsLeft > digitToSuffocate.unknownNeighborAmount) {
+                        if (flagsLeft > (digitToSuffocate.unknownNeighborAmount - 1)) {
                             suffocationFound = true;
+                        } else {
+                            let index = getCellCoords(digitToSuffocate);
+
+                            if (suffocateCounts.hasOwnProperty(index)) {
+                                suffocateCounts[index] += 1;
+
+                                if (flagsLeft > (digitToSuffocate.unknownNeighborAmount - suffocateCounts[index])) {
+                                    suffocationFound = true;
+                                }
+                            } else {
+                                suffocateCounts[index] = 1;
+                            }
                         }
                     }
                 });
@@ -1695,9 +1975,13 @@ function sweep(fieldToSweep, bombAmount, withGuessing = true, doLog = true) {
                 revealCell(assumedFlag);
                 suffocationsFound = true;
             }
-        }
+        });
 
         return suffocationsFound;
+    }
+
+    function getCellCoords(cell) {
+        return cell.x + "-" + cell.y;
     }
 
     function checkTrivialFlags(field) {
