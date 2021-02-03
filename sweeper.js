@@ -5,7 +5,7 @@ let AutoSweepConfig = {
     isAutoSweepEnabled: false,
     isRiddleFinderMode: false,
     isRecordingStepStats: false,
-    isVirtualMode: true,
+    isVirtualMode: false,
     virtualGameConfig: null,
     batchSizeForVirtual: 1000,
     baseIdleTime: 0,
