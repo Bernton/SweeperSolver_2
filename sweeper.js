@@ -206,7 +206,7 @@ function startNewGameForAutoSweep(config = AutoSweepConfig) {
 }
 
 function isGuessingSolver(solver) {
-    return solver.includes("g");
+    return solver !== null && solver.includes("g");
 }
 
 function autoSweep(config, stats) {
