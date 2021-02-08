@@ -23,7 +23,9 @@ setKeyDownHandler();
 
 
 
-function disableEndOfGamePrompt() { prompt = () => "cancel"; }
+function disableEndOfGamePrompt() {
+    prompt = () => "cancel";
+}
 
 function setKeyDownHandler() {
     if (!window.sweepKeyDown) {
@@ -83,7 +85,9 @@ function startAutoSweep(config, stats) {
     setTimeout(() => autoSweep(config, stats), 0);
 }
 
-function stopAutoSweep(config) { config.isAutoSweepEnabled = false; }
+function stopAutoSweep(config) {
+    config.isAutoSweepEnabled = false;
+}
 
 function formatLogGameStatsWithRaw() {
     formatLogGameStats(null, AutoSweepStats, true);
@@ -104,12 +108,13 @@ function formatLogGameStats(gamesIncluded = null, stats = AutoSweepStats, logRaw
 
     console.log("Stats for first " + gameStats.length + " games");
     logWinningPercentage();
-
     logGuessesPerGame();
     logTimePerGame();
     logTimePerStep();
 
-    if (logRaw) { console.log("Raw data: ", gameStats); }
+    if (logRaw) {
+        console.log("Raw data: ", gameStats);
+    }
 
     function logGuessesPerGame() {
         let guessesPerGame = gameStats.map(g => g.guesses);
@@ -137,7 +142,9 @@ function formatLogGameStats(gamesIncluded = null, stats = AutoSweepStats, logRaw
         logStat("Winning percentage", winPercentage.toFixed(2) + "% (" + wins + "/" + gameStats.length + ")");
     }
 
-    function logStat(title, formatStat) { console.log("-> " + title + ":\t\t" + formatStat); }
+    function logStat(title, formatStat) {
+        console.log("-> " + title + ":\t\t" + formatStat);
+    }
 
     function mapStats(values) {
         return {
@@ -150,10 +157,21 @@ function formatLogGameStats(gamesIncluded = null, stats = AutoSweepStats, logRaw
         };
     }
 
-    function sum(values) { return values.reduce((a, b) => a + b); }
-    function min(values) { return values.reduce((a, b) => Math.min(a, b)); }
-    function max(values) { return values.reduce((a, b) => Math.max(a, b)); }
-    function average(values) { return sum(values) / values.length; }
+    function sum(values) {
+        return values.reduce((a, b) => a + b);
+    }
+
+    function min(values) {
+        return values.reduce((a, b) => Math.min(a, b));
+    }
+
+    function max(values) {
+        return values.reduce((a, b) => Math.max(a, b));
+    }
+
+    function average(values) {
+        return sum(values) / values.length;
+    }
 
     function median(values) {
         let sortedValues = values.slice(0).sort((a, b) => a - b);
@@ -170,7 +188,9 @@ function resetGameStats(stats = AutoSweepStats) {
     }
 }
 
-function toggleDoLog(config = AutoSweepConfig) { config.doLog = !config.doLog; }
+function toggleDoLog(config = AutoSweepConfig) {
+    config.doLog = !config.doLog;
+}
 
 function startNewGameForAutoSweep(config = AutoSweepConfig) {
     config.lastSweepResult.state = null;
@@ -193,7 +213,9 @@ function autoSweep(config, stats) {
     let iterations = config.batchSizeForVirtual;
 
     do {
-        if (!config.isAutoSweepEnabled) { return; }
+        if (!config.isAutoSweepEnabled) {
+            return;
+        }
 
         let idleTime;
         let restartNeeded = lastWasNewGameState(config);
@@ -227,16 +249,14 @@ function autoSweep(config, stats) {
     function executeSweepCycle(config, stats) {
         let idleTime;
         let sweepResult = sweepPage(true, config.doLog, config, stats);
-        let interactions = sweepResult.interactions;
-        let isRiddle = config.isRiddleFinderMode && sweepResult.solver === "3";
+        let isRiddle = !config.isVirtualMode && config.isRiddleFinderMode && sweepResult.solver === "3";
 
         if (isRiddle) {
             config.isAutoSweepEnabled = false;
             idleTime = 0;
         }
         else {
-            let state = sweepResult.state;
-            idleTime = getIdleTimeForState(config, state);
+            idleTime = getIdleTimeForState(config, sweepResult.state);
 
             if (!sweepResult.solver) {
                 sweepResult.solver = config.lastSweepResult.solver;
@@ -246,7 +266,7 @@ function autoSweep(config, stats) {
         }
 
         if (config.isAutoSweepEnabled || isRiddle) {
-            executeInteractions(interactions, !isRiddle, config.isVirtualMode);
+            executeInteractions(sweepResult.interactions, !isRiddle, config.isVirtualMode);
         }
 
         return idleTime;
@@ -272,7 +292,9 @@ function autoSweep(config, stats) {
 }
 
 function getBombArray(field) {
-    return field.reduce((A, B) => A.concat(B.reduce((a, b) => a.concat(b.isBomb ? true : false), [])), []);
+    return field.reduce((rowA, rowB) =>
+        rowA.concat(rowB.reduce((cellA, cellB) =>
+            cellA.concat(cellB.isBomb ? true : false), [])), []);
 }
 
 function isNewGameState(state) {
@@ -331,7 +353,9 @@ function getBombAmount() {
 }
 
 function executeVirtualInteractions(interactions) {
-    if (!window.virtualGame) { return; }
+    if (!window.virtualGame) {
+        return;
+    }
 
     let game = window.virtualGame;
     let field = window.virtualGame.field;
@@ -406,7 +430,10 @@ function executeVirtualInteractions(interactions) {
     }
 
     function setBomb(cells, bombAmount) {
-        if (bombAmount < 1) { return; }
+        if (bombAmount < 1) {
+            return;
+        }
+
         let chosenIndex = getRandomInt(cells.length);
         let chosenCell = cells[chosenIndex];
         chosenCell.isBomb = true;
@@ -421,7 +448,9 @@ function executeVirtualInteractions(interactions) {
     }
 
     function getCellsFromField(field) {
-        return field.reduce((a, b) => a.concat(b.reduce((a, b) => a.concat(b), []), []));
+        return field.reduce((rowA, rowB) =>
+            rowA.concat(rowB.reduce((cellA, cellB) =>
+                cellA.concat(cellB), []), []));
     }
 }
 
@@ -483,11 +512,15 @@ function restartVirtualGame(config) {
         return { width: width, height: height, bombAmount: bombAmout, hasStarted: false };
     }
 
-    function createExpertGame() { return createVirtualGame(30, 16, 99); }
+    function createExpertGame() {
+        return createVirtualGame(30, 16, 99);
+    }
 }
 
 function getVirtualGame(config) {
-    if (!window.virtualGame) { restartVirtualGame(config); }
+    if (!window.virtualGame) {
+        restartVirtualGame(config);
+    }
 
     return {
         field: window.virtualGame.field,
@@ -496,10 +529,9 @@ function getVirtualGame(config) {
 }
 
 function sweepPage(withGuessing = true, doLog = true, config = null, stats = null) {
-    let isVirtualMode = config ? config.isVirtualMode : false;
-
     let field;
     let bombAmount;
+    let isVirtualMode = config ? config.isVirtualMode : false;
 
     if (isVirtualMode) {
         let virtualGame = getVirtualGame(config.virtualGameConfig);
@@ -525,10 +557,7 @@ function sweepPage(withGuessing = true, doLog = true, config = null, stats = nul
         let gameIndex = config.gameIndex;
 
         if (!stats.gameStats[gameIndex]) {
-            stats.gameStats[gameIndex] = {
-                index: gameIndex
-            };
-
+            stats.gameStats[gameIndex] = { index: gameIndex };
             stats.gameStats[gameIndex].stepStats = [];
         }
 
@@ -536,10 +565,8 @@ function sweepPage(withGuessing = true, doLog = true, config = null, stats = nul
 
         if (!gameStats.finishState) {
             gameStats.stepStats.push({
-                result: {
-                    state: sweepResult.state,
-                    solver: sweepResult.solver
-                }, time: sweepTime
+                result: { state: sweepResult.state, solver: sweepResult.solver },
+                time: sweepTime
             });
 
             if (isNewGameState(sweepResult.state)) {
@@ -547,7 +574,6 @@ function sweepPage(withGuessing = true, doLog = true, config = null, stats = nul
                 gameStats.bombArray = getBombArray(field);
 
                 let stepStats = gameStats.stepStats;
-
                 let wasGuessStep = (step) => step.result.state === SweepStates.solving && isGuessingSolver(step.result.solver);
                 let was3Step = (step) => step.result.state === SweepStates.solving && step.result.solver === "3";
                 gameStats.guesses = stepStats.reduce((a, b) => a + Number(wasGuessStep(b)), 0);
@@ -578,7 +604,9 @@ function sweepPage(withGuessing = true, doLog = true, config = null, stats = nul
             while (true) {
                 let jDiv = $('#' + (y + 1) + '_' + (x + 1));
 
-                if (jDiv.length < 1 || jDiv.css('display') === "none") { break; }
+                if (jDiv.length < 1 || jDiv.css('display') === "none") {
+                    break;
+                }
 
                 let jDivClass = jDiv.attr('class');
                 let cell = { div: jDiv[0], x: x, y: y };
@@ -605,7 +633,9 @@ function sweepPage(withGuessing = true, doLog = true, config = null, stats = nul
                 x += 1;
             }
 
-            if (row.length < 1) { break; }
+            if (row.length < 1) {
+                break;
+            }
 
             y += 1;
             x = 0;
@@ -642,7 +672,6 @@ function sweep(fieldToSweep, bombAmount, withGuessing = true, doLog = true) {
         if (checkSolved(field)) {
             return onSolved();
         }
-
 
         if (checkTrivialFlags(field) || checkTrivialReveals(field)) {
             return onStandardSolving("0", "[0] Trivial cases");
@@ -758,9 +787,7 @@ function sweep(fieldToSweep, bombAmount, withGuessing = true, doLog = true) {
                     if (cell.groupingIndex === null) {
                         cell.groupingIndex = index;
                         unknownsGrouping.push(cell);
-                        cell.neighbors.forEach(neighbor => {
-                            addToGrouping(neighbor);
-                        });
+                        cell.neighbors.forEach(neighbor => addToGrouping(neighbor));
                     }
                 };
 
@@ -791,7 +818,6 @@ function sweep(fieldToSweep, bombAmount, withGuessing = true, doLog = true) {
 
         function createCellLists(unknownsGroupings) {
             addDigitsToGroupings(unknownsGroupings);
-
             let cellLists = [];
 
             unknownsGroupings.forEach(grouping => {
@@ -808,13 +834,11 @@ function sweep(fieldToSweep, bombAmount, withGuessing = true, doLog = true) {
             for (let i = 0; i < cellLists.length; i++) {
                 let unknowns = cellLists[i].unknowns;
                 let digits = cellLists[i].digits;
-
-                unknowns.forEach(unknown => {
-                    unknown.sortScore = null;
-                });
+                unknowns.forEach(unknown => unknown.sortScore = null);
 
                 digits.forEach(digit => {
-                    digit.valueForUnknowns = 1 / binomialCoefficient(digit.unknownNeighborAmount, digit.value - digit.flaggedNeighborAmount);
+                    let flagsLeft = digit.value - digit.flaggedNeighborAmount;
+                    digit.valueForUnknowns = 1 / binomialCoefficient(digit.unknownNeighborAmount, flagsLeft);
                 });
 
                 let digitsSorted = digits.sort((a, b) => -(a.valueForUnknowns - b.valueForUnknowns));
@@ -822,10 +846,8 @@ function sweep(fieldToSweep, bombAmount, withGuessing = true, doLog = true) {
 
                 digitsSorted.forEach(digit => {
                     digit.neighbors.forEach(unknown => {
-                        if (unknowns.includes(unknown)) {
-                            if (unknown.sortScore === null) {
-                                unknown.sortScore = sortScore;
-                            }
+                        if (unknowns.includes(unknown) && unknown.sortScore === null) {
+                            unknown.sortScore = sortScore;
                         }
                     });
 
@@ -1032,7 +1054,9 @@ function sweep(fieldToSweep, bombAmount, withGuessing = true, doLog = true) {
                         }
                     });
 
-                    if (!belongsToCluster) { clusteredGroups.push([cell]); }
+                    if (!belongsToCluster) {
+                        clusteredGroups.push([cell]);
+                    }
                 });
 
                 return clusteredGroups;
@@ -1174,22 +1198,13 @@ function sweep(fieldToSweep, bombAmount, withGuessing = true, doLog = true) {
             let validAssignNodes = [createRootAssignmentNode(candidates)];
             let validCombinations = [];
 
-            // let iterationCount = 0;
-            // console.time("Iterations");
-
             while (validAssignNodes.length > 0) {
-                // iterationCount += 1;
-
                 let assignNode = validAssignNodes.pop();
                 let newNodesAreLeafs = getUnassignedAmount(assignNode.assignment) === 1;
                 let newNodes = searchAssignNode(candidates, assignNode, flagsLeft, newNodesAreLeafs);
                 let associatedArray = (newNodesAreLeafs ? validCombinations : validAssignNodes);
                 newNodes.forEach(newNode => associatedArray.push(newNode));
             }
-
-            // console.timeEnd("Iterations");
-            // console.log("iterationCount:", iterationCount);
-            // console.log("validAssignments:", validCombinations);
 
             return validCombinations;
         }
@@ -1473,12 +1488,10 @@ function sweep(fieldToSweep, bombAmount, withGuessing = true, doLog = true) {
 
         function mergeGroupingsCombinationsAndCheck(groupingCheckResults) {
             setCheckResultSummaries(groupingCheckResults);
-
             let mergedSummaries = [];
 
             groupingCheckResults.forEach(checkResult => {
                 if (mergedSummaries.length > 0) {
-
                     let newSummaries = {};
                     let newSummaryList = [];
 
@@ -1500,7 +1513,6 @@ function sweep(fieldToSweep, bombAmount, withGuessing = true, doLog = true) {
                                 }
 
                                 let newValues = rootValues.concat(leafValues);
-
                                 let newMergedCount = rootSummary.mergedCount * leafSummary.mergedCount;
                                 let newSummary = { values: newValues, flagAmount: newFlagAmount, mergedCount: newMergedCount };
 
@@ -1527,8 +1539,7 @@ function sweep(fieldToSweep, bombAmount, withGuessing = true, doLog = true) {
             let mergedCandidates = [];
             groupingCheckResults.forEach(checkResult => mergedCandidates = mergedCandidates.concat(checkResult.candidates));
 
-            let searchResult = searchCertainResultForSummaries(mergedCandidates, mergedSummaries, totalFlagsLeft);
-            return searchResult;
+            return searchCertainResultForSummaries(mergedCandidates, mergedSummaries, totalFlagsLeft);
         }
 
         function calculateCandidateCellProbs(checkResult) {
@@ -1575,9 +1586,7 @@ function sweep(fieldToSweep, bombAmount, withGuessing = true, doLog = true) {
             let candidateValues = new Array(candidates.length).fill(0);
 
             combinationProbs.forEach(prob => {
-                prob.values.forEach((value, i) => {
-                    candidateValues[i] += value * (prob.weight / totalWeight);
-                });
+                prob.values.forEach((value, i) => candidateValues[i] += value * (prob.weight / totalWeight));
             });
 
             return candidateValues;
@@ -1589,11 +1598,7 @@ function sweep(fieldToSweep, bombAmount, withGuessing = true, doLog = true) {
             }
 
             let averageFlagsInBorder = 0;
-
-            cellProbs.forEach(cellProb => {
-                averageFlagsInBorder += cellProb.fraction;
-            });
-
+            cellProbs.forEach(cellProb => averageFlagsInBorder += cellProb.fraction);
             let averageFlagsLeftOutside = totalFlagsLeft - averageFlagsInBorder;
             let outsideUnknownsFraction = averageFlagsLeftOutside / outsideUnknowns.length;
 
