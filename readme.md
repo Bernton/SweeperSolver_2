@@ -51,4 +51,4 @@ All settings for the auto sweeper can be found within the global object *autoSwe
 **doLog**: Determines if the auto sweeper should output its steps to the console\
 **isRiddleFinderMode**: If enabled, the sweeper will stop on difficult problems for you to solve\
 **baseIdleTime**: Specifies the time the solver waits for each step in milliseconds\
-**gameFinishedIdleTime**:	Specifies the time the solver waits after it has finished a game in milliseconds\
+**gameFinishedIdleTime**:	Specifies the time the solver waits after it has finished a game in milliseconds
