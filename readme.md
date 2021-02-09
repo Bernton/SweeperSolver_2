@@ -12,34 +12,35 @@ Use beyond keybinds require minimal technical skills in javascript.
 ## How to use / functionality:
 *Note: Keybinds are in square brackets.*
 
-sweep step guessing **[w]**:
+sweep step guessing **[w]**:\
 Executes a single step for solving the game, guesses move if not certain.
 
-sweep step guessing without board interaction **[shift+w]**:
+sweep step guessing without board interaction **[shift+w]**:\
 Determines a single step and outputs the interactions to the console, suggests a move if not certain.
 
-sweep step certain **[e]**:
+sweep step certain **[e]**:\
 Executes a single step for solving the game, stops when there is no certain interaction and outputs step details in that case.
 
-sweep step guessing without board interaction **[shift+e]**:
+sweep step guessing without board interaction **[shift+e]**:\
 Determines a single step and outputs the certain interactions to the console.
  
- start auto sweeper **[s]**:
+ start auto sweeper **[s]**:\
  Starts the auto sweeper, that will execute steps automatically until stopped.
  
- stop auto sweeper **[d]**:
+ 
+ stop auto sweeper **[d]**:\
  Stops the auto sweeper.
 
-format log game stats **[i]**:
+format log game stats **[i]**:\
 Outputs the stats for the auto sweeper to the console.
 
-format log game stats with raw **[o]**:
+format log game stats with raw **[o]**:\
 Outputs the stats for the auto sweeper to the console with raw data included.
 
-reset game stats **[k]**:
+reset game stats **[k]**:\
 Resets the game stats for the auto sweeper.
 
-toggle log **[l]**:
+toggle log **[l]**:\
 Toggles if the auto sweeper should output its steps to the console.
 
 The functionality that is offered with keybinds and more can also be called directly in the console as functions.
@@ -47,7 +48,7 @@ The functionality that is offered with keybinds and more can also be called dire
 ## Settings / Configuration:
 All settings for the auto sweeper can be found within the global object *autoSweepConfig*.
 
-**doLog**: Determines if the auto sweeper should output its steps to the console
-**isRiddleFinderMode**: If enabled, the sweeper will stop on difficult problems for you to solve
-**baseIdleTime**: Specifies the time the solver waits for each step in milliseconds
-**gameFinishedIdleTime**:	Specifies the time the solver waits after it has finished a game in milliseconds
+**doLog**: Determines if the auto sweeper should output its steps to the console\
+**isRiddleFinderMode**: If enabled, the sweeper will stop on difficult problems for you to solve\
+**baseIdleTime**: Specifies the time the solver waits for each step in milliseconds\
+**gameFinishedIdleTime**:	Specifies the time the solver waits after it has finished a game in milliseconds\
