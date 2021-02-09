@@ -1,22 +1,25 @@
-let SweepStates = { start: "start", solving: "solving", stuck: "stuck", solved: "solved", death: "death" };
+let sweepStates = {
+    start: "start",
+    solving: "solving",
+    stuck: "stuck",
+    solved: "solved",
+    death: "death"
+};
 
-let AutoSweepConfig = {
+let autoSweepConfig = {
     doLog: false,
     isAutoSweepEnabled: false,
     isRiddleFinderMode: false,
     isRecordingStepStats: false,
     isVirtualMode: false,
-    virtualGameConfig: null,
-    batchSizeForVirtual: 1000,
+    virtualGameConfig: { width: 30, height: 16, bombAmount: 99 },
+    virtualBatchSize: 1000,
     baseIdleTime: 0,
-    solvingIdleTime: 0,
-    newGameStateIdleTime: 0,
-    restDefaultIdleTime: 0,
-    gameIndex: 0,
-    lastSweepResult: { state: null, solver: null }
+    gameFinishedIdleTime: 0,
+    state: { gameIndex: 0, lastSweepResult: { state: null, solver: null } }
 };
 
-let AutoSweepStats = { gameStats: [] };
+let autoSweepStats = { gameStats: [] };
 
 disableEndOfGamePrompt();
 setKeyDownHandler();
@@ -35,25 +38,25 @@ function setKeyDownHandler() {
 
     function keyDownHandler(e) {
         switch (e.key) {
-            case "w": sweepStepGuessing(true); break;
+            case "w": sweepStepGuessing(); break;
             case "W": sweepStepGuessing(false); break;
-            case "e": sweepStepCertain(true); break;
+            case "e": sweepStepCertain(); break;
             case "E": sweepStepCertain(false); break;
-            case "s": startAutoSweep(AutoSweepConfig, AutoSweepStats); break;
-            case "d": stopAutoSweep(AutoSweepConfig); break;
+            case "s": startAutoSweep(autoSweepConfig, autoSweepStats); break;
+            case "d": stopAutoSweep(autoSweepConfig); break;
             case "i": formatLogGameStats(); break;
             case "o": formatLogGameStatsWithRaw(); break;
             case "k": resetGameStats(); break;
-            case "l": toggleDoLog(); break;
+            case "l": toggleDoLog(autoSweepConfig); break;
         }
     }
 }
 
-function sweepStepCertain(withBoardInteraction) {
+function sweepStepCertain(withBoardInteraction = true) {
     sweepStep(withBoardInteraction, false, ("lastForSweepStepCertain" + withBoardInteraction));
 }
 
-function sweepStepGuessing(withBoardInteraction) {
+function sweepStepGuessing(withBoardInteraction = true) {
     sweepStep(withBoardInteraction, true, ("lastForSweepStepGuessing" + withBoardInteraction));
 }
 
@@ -89,11 +92,15 @@ function stopAutoSweep(config) {
     config.isAutoSweepEnabled = false;
 }
 
-function formatLogGameStatsWithRaw() {
-    formatLogGameStats(null, AutoSweepStats, true);
+function formatLogGameStats(gamesIncluded = null) {
+    formatLogStats(autoSweepStats, gamesIncluded);
 }
 
-function formatLogGameStats(gamesIncluded = null, stats = AutoSweepStats, logRaw = false) {
+function formatLogGameStatsWithRaw(gamesIncluded = null) {
+    formatLogStats(autoSweepStats, gamesIncluded, true);
+}
+
+function formatLogStats(stats, gamesIncluded = null, logRaw = false) {
     let gameStats = stats.gameStats.slice(0);
 
     if (gamesIncluded !== null && gamesIncluded > 0) {
@@ -137,7 +144,7 @@ function formatLogGameStats(gamesIncluded = null, stats = AutoSweepStats, logRaw
     }
 
     function logWinningPercentage() {
-        let wins = gameStats.reduce((a, b) => a + (b.finishState === SweepStates.solved ? 1 : 0), 0);
+        let wins = gameStats.reduce((a, b) => a + (b.finishState === sweepStates.solved ? 1 : 0), 0);
         let winPercentage = wins / gameStats.length * 100.0;
         logStat("Winning percentage", winPercentage.toFixed(2) + "% (" + wins + "/" + gameStats.length + ")");
     }
@@ -180,7 +187,7 @@ function formatLogGameStats(gamesIncluded = null, stats = AutoSweepStats, logRaw
     }
 }
 
-function resetGameStats(stats = AutoSweepStats) {
+function resetGameStats(stats = autoSweepStats) {
     if (stats.gameStats && stats.gameStats.length > 0) {
         stats.gameStats = stats.gameStats.filter(c => !c.finishState);
     } else {
@@ -188,14 +195,14 @@ function resetGameStats(stats = AutoSweepStats) {
     }
 }
 
-function toggleDoLog(config = AutoSweepConfig) {
+function toggleDoLog(config) {
     config.doLog = !config.doLog;
 }
 
-function startNewGameForAutoSweep(config = AutoSweepConfig) {
-    config.lastSweepResult.state = null;
-    config.lastSweepResult.solver = null;
-    config.gameIndex += 1;
+function startNewGameForAutoSweep(config = autoSweepConfig) {
+    config.state.lastSweepResult.state = null;
+    config.state.lastSweepResult.solver = null;
+    config.state.gameIndex += 1;
 
     if (config.isVirtualMode) {
         restartVirtualGame(config.virtualGameConfig);
@@ -210,7 +217,7 @@ function isGuessingSolver(solver) {
 }
 
 function autoSweep(config, stats) {
-    let iterations = config.batchSizeForVirtual;
+    let iterations = config.virtualBatchSize;
 
     do {
         if (!config.isAutoSweepEnabled) {
@@ -221,7 +228,7 @@ function autoSweep(config, stats) {
         let restartNeeded = lastWasNewGameState(config);
 
         if (restartNeeded) {
-            if (config.lastSweepResult.state === "death" && !isGuessingSolver(config.lastSweepResult.solver)) {
+            if (config.state.lastSweepResult.state === "death" && !isGuessingSolver(config.state.lastSweepResult.solver)) {
                 throw new Error("Died while not guessing!");
             }
 
@@ -247,22 +254,21 @@ function autoSweep(config, stats) {
     }
 
     function executeSweepCycle(config, stats) {
-        let idleTime;
+        let idleTime = 0;
         let sweepResult = sweepPage(true, config.doLog, config, stats);
         let isRiddle = !config.isVirtualMode && config.isRiddleFinderMode && sweepResult.solver === "3";
 
         if (isRiddle) {
             config.isAutoSweepEnabled = false;
-            idleTime = 0;
         }
         else {
-            idleTime = getIdleTimeForState(config, sweepResult.state);
+            idleTime = isNewGameState(sweepResult.state) ? config.gameFinishedIdleTime : 0;
 
             if (!sweepResult.solver) {
-                sweepResult.solver = config.lastSweepResult.solver;
+                sweepResult.solver = config.state.lastSweepResult.solver;
             }
 
-            config.lastSweepResult = sweepResult;
+            config.state.lastSweepResult = sweepResult;
         }
 
         if (config.isAutoSweepEnabled || isRiddle) {
@@ -272,22 +278,8 @@ function autoSweep(config, stats) {
         return idleTime;
     }
 
-    function getIdleTimeForState(config, state) {
-        let stateIdleTime = 0;
-
-        if (state === SweepStates.solving) {
-            stateIdleTime = config.solvingIdleTime;
-        } else if (isNewGameState(state)) {
-            stateIdleTime = config.newGameStateIdleTime;
-        } else {
-            stateIdleTime = config.restDefaultIdleTime;
-        }
-
-        return stateIdleTime;
-    }
-
     function lastWasNewGameState(config) {
-        return isNewGameState(config.lastSweepResult.state);
+        return isNewGameState(config.state.lastSweepResult.state);
     }
 }
 
@@ -298,7 +290,7 @@ function getBombArray(field) {
 }
 
 function isNewGameState(state) {
-    return state === SweepStates.solved || state === SweepStates.death;
+    return state === sweepStates.solved || state === sweepStates.death;
 }
 
 function executeInteractions(interactions, withBoardInteraction, isVirtualMode) {
@@ -501,7 +493,7 @@ function restartVirtualGame(config) {
     }
 
     function setVirtualGame() {
-        window.virtualGame = config ? createGameFromConfig(config) : createExpertGame();
+        window.virtualGame = createGameFromConfig(config);
     }
 
     function createGameFromConfig(config) {
@@ -510,10 +502,6 @@ function restartVirtualGame(config) {
 
     function createVirtualGame(width, height, bombAmout) {
         return { width: width, height: height, bombAmount: bombAmout, hasStarted: false };
-    }
-
-    function createExpertGame() {
-        return createVirtualGame(30, 16, 99);
     }
 }
 
@@ -554,7 +542,7 @@ function sweepPage(withGuessing = true, doLog = true, config = null, stats = nul
     function recordGameStats(config, stats, field, sweepResult, sweepT0) {
         let sweepT1 = performance.now();
         let sweepTime = (sweepT1 - sweepT0);
-        let gameIndex = config.gameIndex;
+        let gameIndex = config.state.gameIndex;
 
         if (!stats.gameStats[gameIndex]) {
             stats.gameStats[gameIndex] = { index: gameIndex };
@@ -574,8 +562,8 @@ function sweepPage(withGuessing = true, doLog = true, config = null, stats = nul
                 gameStats.bombArray = getBombArray(field);
 
                 let stepStats = gameStats.stepStats;
-                let wasGuessStep = (step) => step.result.state === SweepStates.solving && isGuessingSolver(step.result.solver);
-                let was3Step = (step) => step.result.state === SweepStates.solving && step.result.solver === "3";
+                let wasGuessStep = (step) => step.result.state === sweepStates.solving && isGuessingSolver(step.result.solver);
+                let was3Step = (step) => step.result.state === sweepStates.solving && step.result.solver === "3";
                 gameStats.guesses = stepStats.reduce((a, b) => a + Number(wasGuessStep(b)), 0);
                 gameStats.time = stepStats.reduce((a, b) => a + b.time, 0);
                 gameStats.mostTimeStep = stepStats.reduce((a, b) => Math.max(a, b.time), 0);
@@ -702,14 +690,14 @@ function sweep(fieldToSweep, bombAmount, withGuessing = true, doLog = true) {
         let resultInfo = checkAllValidCombinations(field, borderCellGroupings, outsideUnknowns, flagsLeft);
 
         if (resultInfo.certainResultFound) {
-            return onCheckCombinatorially(resultInfo, null, SweepStates.solving);
+            return onCheckCombinatorially(resultInfo, null, sweepStates.solving);
         }
 
         if (withGuessing) {
-            return onCheckCombinatorially(resultInfo, "guessing", SweepStates.solving);
+            return onCheckCombinatorially(resultInfo, "guessing", sweepStates.solving);
         }
 
-        return onCheckCombinatorially(resultInfo, "stuck", SweepStates.stuck);
+        return onCheckCombinatorially(resultInfo, "stuck", sweepStates.stuck);
     }
 
     function checkIsolatedUnknowns(borderCellGroupings) {
@@ -718,7 +706,7 @@ function sweep(fieldToSweep, bombAmount, withGuessing = true, doLog = true) {
 
     function onIsolatedUnknowns(outsideUnknowns, flagsLeft) {
         let subMessages = [];
-        let state = SweepStates.solving;
+        let state = sweepStates.solving;
         let mode = null;
 
         if (flagsLeft === 0) {
@@ -730,7 +718,7 @@ function sweep(fieldToSweep, bombAmount, withGuessing = true, doLog = true) {
             subMessages.push("Reveal random cell (" + percentage + ")");
             mode = "guessing";
         } else {
-            state = SweepStates.stuck;
+            state = sweepStates.stuck;
             mode = "stuck";
         }
 
@@ -872,7 +860,7 @@ function sweep(fieldToSweep, bombAmount, withGuessing = true, doLog = true) {
 
     function onBombDeath() {
         log("[x] Bomb death");
-        return createCheckResult(SweepStates.death);
+        return createCheckResult(sweepStates.death);
     }
 
     function log() {
@@ -899,13 +887,13 @@ function sweep(fieldToSweep, bombAmount, withGuessing = true, doLog = true) {
 
     function onStandardSolving(solver, message) {
         log(message);
-        return createCheckResult(SweepStates.solving, solver);
+        return createCheckResult(sweepStates.solving, solver);
     }
 
     function onStart(field) {
-        log("[s]", SweepStates.start);
+        log("[s]", sweepStates.start);
         if (withGuessing) { revealFirst(field); }
-        return createCheckResult(SweepStates.start);
+        return createCheckResult(sweepStates.start);
     }
 
     function revealFirst(field) {
@@ -917,8 +905,8 @@ function sweep(fieldToSweep, bombAmount, withGuessing = true, doLog = true) {
     }
 
     function onSolved() {
-        log("[o]", SweepStates.solved);
-        return createCheckResult(SweepStates.solved);
+        log("[o]", sweepStates.solved);
+        return createCheckResult(sweepStates.solved);
     }
 
     function checkTrivialReveals(field) {
