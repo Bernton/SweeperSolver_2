@@ -1,7 +1,9 @@
 # Sweeper Solver 2
 Designed to work on: [http://minesweeperonline.com/](http://minesweeperonline.com/)
 
-Use beyond keybinds require minimal technical skills in javascript.
+For use beyond keybinds minimal technical skill in javascript is needed.
+
+Finds all certain results and if a guess has to be made, it calculates the probability of candidates being bombs. Reaches a win rating of about 51% with an average of roughly 2.65 guesses per game (tested with over 200K games).
 
 ## How to setup:
 
