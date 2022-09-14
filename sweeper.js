@@ -1672,32 +1672,27 @@ function sweep(fieldToSweep, bombAmount, withGuessing = true, doLog = true) {
 
             if (withGuessing && cellProbs.length > 0) {
                 let lowestWeight = lowestCellProb.score;
-                let highestWeight = (1 - highestCellProb.score) * 0.1;
+                let highestWeight = (1 - highestCellProb.score) * 0.9;
 
-                if (lowestWeight <= highestWeight) {
+                let fieldToCheck = copyAndInitializeField(field);
+                let cellToFlag = highestCellProb.candidate.referenceCell;
+                let flaggedCell = fieldToCheck[cellToFlag.y][cellToFlag.x]
+                flaggedCell.isFlagged = true;
+                flaggedCell.isUnknown = false;
+
+                setCellNeighborInfo(fieldToCheck);
+
+                let sweepResult = sweep(fieldToCheck, bombAmount, false, false);
+                let reveals = sweepResult.interactions.filter(c => !c.isFlag);
+
+                if (reveals.length <= 2) {
                     resultInfo.messages.push("Reveal lowest score cell (" + lowestCellProb.percentage + ")");
                     revealCell(lowestCellProb.candidate);
                 } else {
-                    let fieldToCheck = copyAndInitializeField(field);
-                    let cellToFlag = highestCellProb.candidate.referenceCell;
-                    let flaggedCell = fieldToCheck[cellToFlag.y][cellToFlag.x]
-                    flaggedCell.isFlagged = true;
-                    flaggedCell.isUnknown = false;
-
-                    setCellNeighborInfo(fieldToCheck);
-
-                    let sweepResult = sweep(fieldToCheck, bombAmount, false, false);
-                    let reveals = sweepResult.interactions.filter(c => !c.isFlag);
-
-                    if (reveals.length === 0) {
-                        resultInfo.messages.push("Reveal lowest score cell (" + lowestCellProb.percentage + ")");
-                        revealCell(lowestCellProb.candidate);
-                    } else {
-                        let reveal = reveals[0];
-                        resultInfo.messages.push("Reveal cell assuming bomb (" + highestCellProb.percentage + ")");
-                        let cellToReveal = field[reveal.cell.y][reveal.cell.x];
-                        revealCell(cellToReveal);
-                    }
+                    let reveal = reveals[0];
+                    resultInfo.messages.push("Reveal cell assuming bomb (" + highestCellProb.percentage + ")");
+                    let cellToReveal = field[reveal.cell.y][reveal.cell.x];
+                    revealCell(cellToReveal);
                 }
             } else {
                 resultInfo.messages.push("No certain cell found");
