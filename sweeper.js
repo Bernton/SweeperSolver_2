@@ -930,7 +930,7 @@ function sweep(fieldToSweep, bombAmount, withGuessing = true, doLog = true) {
         let field = fieldToSweep.map(rowToSweep => {
             let row = rowToSweep.map(cellToSweep => {
                 return {
-                    referenceCell: cellToSweep,
+                    referenceCell: cellToSweep.referenceCell ?? cellToSweep,
                     x: cellToSweep.x,
                     y: cellToSweep.y,
                     value: cellToSweep.value,
@@ -947,27 +947,27 @@ function sweep(fieldToSweep, bombAmount, withGuessing = true, doLog = true) {
 
         setCellNeighborInfo(field);
         return field;
+    }
 
-        function setCellNeighborInfo(field) {
-            applyToCells(field, cell => {
-                cell.neighbors = [];
-                cell.unknownNeighborAmount = 0;
-                cell.flaggedNeighborAmount = 0;
+    function setCellNeighborInfo(field) {
+        applyToCells(field, cell => {
+            cell.neighbors = [];
+            cell.unknownNeighborAmount = 0;
+            cell.flaggedNeighborAmount = 0;
 
-                applyToNeighbors(field, cell, neighborCell => {
-                    if (neighborCell.isUnknown) {
-                        cell.unknownNeighborAmount += 1;
-                    } else if (neighborCell.isFlagged) {
-                        cell.flaggedNeighborAmount += 1;
-                    }
+            applyToNeighbors(field, cell, neighborCell => {
+                if (neighborCell.isUnknown) {
+                    cell.unknownNeighborAmount += 1;
+                } else if (neighborCell.isFlagged) {
+                    cell.flaggedNeighborAmount += 1;
+                }
 
-                    cell.neighbors.push(neighborCell);
-                });
-
-                cell.hiddenNeighborAmount = cell.unknownNeighborAmount + cell.flaggedNeighborAmount;
-                cell.neighborAmount = cell.neighbors.length;
+                cell.neighbors.push(neighborCell);
             });
-        }
+
+            cell.hiddenNeighborAmount = cell.unknownNeighborAmount + cell.flaggedNeighborAmount;
+            cell.neighborAmount = cell.neighbors.length;
+        });
     }
 
     function checkAllValidCombinations(field, borderCellGroupings, outsideUnknowns, totalFlagsLeft) {
@@ -1380,14 +1380,17 @@ function sweep(fieldToSweep, bombAmount, withGuessing = true, doLog = true) {
         function searchCertainResultForSummaries(candidates, mergedSummaries) {
             let totalSummary = { values: Array(candidates.length).fill(0), mergedCount: 0 };
             let leastBombs = Number.MAX_VALUE;
+            let mostBombs = 0;
 
             mergedSummaries.forEach(summary => {
                 summary.values.forEach((value, i) => totalSummary.values[i] += value);
                 totalSummary.mergedCount += summary.mergedCount;
                 leastBombs = (summary.flagAmount < leastBombs) ? summary.flagAmount : leastBombs;
+                mostBombs = (summary.flagAmount > mostBombs) ? summary.flagAmount : mostBombs;
             });
 
             let noBombsLeftForRest = searchNoBombsLeftForRest(leastBombs, totalFlagsLeft);
+            let allBombsOnRest = searchAllBombsOnRest(mostBombs, totalFlagsLeft)
 
             candidates.forEach((candidate, candidateI) => {
                 let value = totalSummary.values[candidateI];
@@ -1396,7 +1399,7 @@ function sweep(fieldToSweep, bombAmount, withGuessing = true, doLog = true) {
             });
 
             let anyInteraction = searchCertainInteraction(candidates);
-            let certainResultFound = noBombsLeftForRest || anyInteraction;
+            let certainResultFound = noBombsLeftForRest || anyInteraction || allBombsOnRest;
 
             return {
                 certainResultFound: certainResultFound,
@@ -1445,6 +1448,23 @@ function sweep(fieldToSweep, bombAmount, withGuessing = true, doLog = true) {
             }
 
             return noBombsLeftForRest;
+        }
+
+        function searchAllBombsOnRest(mostBombs, flagsLeft) {
+            let remainingBombs = flagsLeft - mostBombs;
+            let allBombsOnRest = outsideUnknowns.length > 0 && outsideUnknowns.length === remainingBombs;
+
+            if (allBombsOnRest) {
+                resultInfo.messages.push("Flags found - all bombs are on outside unknowns");
+
+                applyToCells(field, cell => {
+                    if (cell.isHidden && !cell.isFlagged && !cell.isBorderCell) {
+                        flagCell(cell);
+                    }
+                });
+            }
+
+            return allBombsOnRest;
         }
 
         function setCheckResultSummaries(groupingCheckResults) {
@@ -1631,7 +1651,7 @@ function sweep(fieldToSweep, bombAmount, withGuessing = true, doLog = true) {
         }
 
         function setCellProbScoresAndSort(cellProbs) {
-            cellProbs.forEach(c => c.score = c.fraction * (c.isOutsider ? 1.125 : 1));
+            cellProbs.forEach(c => c.score = c.fraction * ((c.isOutsider && c.fraction < 0.44) ? 1.125 : 1));
             return cellProbs.sort((a, b) => a.score - b.score);
         }
 
@@ -1640,14 +1660,45 @@ function sweep(fieldToSweep, bombAmount, withGuessing = true, doLog = true) {
             cellProbs = setCellProbScoresAndSort(cellProbs);
 
             let lowestCellProb = cellProbs[0];
+            let highestCellProb = cellProbs[cellProbs.length - 1];
 
             if (lowestCellProb.fraction <= 0 || lowestCellProb.fraction >= 1) {
                 throw new Error("Impossible fraction found in uncertain mode!");
             }
 
+            if (highestCellProb.fraction <= 0 || highestCellProb.fraction >= 1) {
+                throw new Error("Impossible fraction found in uncertain mode!");
+            }
+
             if (withGuessing && cellProbs.length > 0) {
-                resultInfo.messages.push("Reveal lowest score cell (" + lowestCellProb.percentage + ")");
-                revealCell(lowestCellProb.candidate);
+                let lowestWeight = lowestCellProb.score;
+                let highestWeight = (1 - highestCellProb.score) * 0.1;
+
+                if (lowestWeight <= highestWeight) {
+                    resultInfo.messages.push("Reveal lowest score cell (" + lowestCellProb.percentage + ")");
+                    revealCell(lowestCellProb.candidate);
+                } else {
+                    let fieldToCheck = copyAndInitializeField(field);
+                    let cellToFlag = highestCellProb.candidate.referenceCell;
+                    let flaggedCell = fieldToCheck[cellToFlag.y][cellToFlag.x]
+                    flaggedCell.isFlagged = true;
+                    flaggedCell.isUnknown = false;
+
+                    setCellNeighborInfo(fieldToCheck);
+
+                    let sweepResult = sweep(fieldToCheck, bombAmount, false, false);
+                    let reveals = sweepResult.interactions.filter(c => !c.isFlag);
+
+                    if (reveals.length === 0) {
+                        resultInfo.messages.push("Reveal lowest score cell (" + lowestCellProb.percentage + ")");
+                        revealCell(lowestCellProb.candidate);
+                    } else {
+                        let reveal = reveals[0];
+                        resultInfo.messages.push("Reveal cell assuming bomb (" + highestCellProb.percentage + ")");
+                        let cellToReveal = field[reveal.cell.y][reveal.cell.x];
+                        revealCell(cellToReveal);
+                    }
+                }
             } else {
                 resultInfo.messages.push("No certain cell found");
                 resultInfo.messages.push("Candidates with percentages:");
