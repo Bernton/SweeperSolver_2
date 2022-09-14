@@ -228,6 +228,10 @@ function autoSweep(config, stats) {
         let restartNeeded = lastWasNewGameState(config);
 
         if (restartNeeded) {
+            if (config.state.lastSweepResult.state === "death" && !isGuessingSolver(config.state.lastSweepResult.solver)) {
+                throw new Error("Died while not guessing!");
+            }
+
             startNewGameForAutoSweep(config);
             idleTime = 0;
         }
@@ -1627,7 +1631,7 @@ function sweep(fieldToSweep, bombAmount, withGuessing = true, doLog = true) {
         }
 
         function setCellProbScoresAndSort(cellProbs) {
-            cellProbs.forEach(c => c.score = c.fraction * ((c.isOutsider && c.fraction < 0.44) ? 1.125 : 1));
+            cellProbs.forEach(c => c.score = c.fraction * (c.isOutsider ? 1.125 : 1));
             return cellProbs.sort((a, b) => a.score - b.score);
         }
 
@@ -1636,27 +1640,14 @@ function sweep(fieldToSweep, bombAmount, withGuessing = true, doLog = true) {
             cellProbs = setCellProbScoresAndSort(cellProbs);
 
             let lowestCellProb = cellProbs[0];
-            let highestCellProb = cellProbs[cellProbs.length - 1];
 
             if (lowestCellProb.fraction <= 0 || lowestCellProb.fraction >= 1) {
                 throw new Error("Impossible fraction found in uncertain mode!");
             }
 
-            if (highestCellProb.fraction <= 0 || highestCellProb >= 1) {
-                throw new Error("Impossible fraction found in uncertain mode!");
-            }
-
             if (withGuessing && cellProbs.length > 0) {
-                let lowestWeight = lowestCellProb.score;
-                let highestWeight = (1 - highestCellProb.score) * 0.9;
-
-                if (lowestWeight <= highestWeight) {
-                    resultInfo.messages.push("Reveal lowest score cell (" + lowestCellProb.percentage + ")");
-                    revealCell(lowestCellProb.candidate);
-                } else {
-                    resultInfo.messages.push("Flag highest score cell (" + highestCellProb.percentage + ")");
-                    flagCell(highestCellProb.candidate);
-                }
+                resultInfo.messages.push("Reveal lowest score cell (" + lowestCellProb.percentage + ")");
+                revealCell(lowestCellProb.candidate);
             } else {
                 resultInfo.messages.push("No certain cell found");
                 resultInfo.messages.push("Candidates with percentages:");
