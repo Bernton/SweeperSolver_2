@@ -1651,49 +1651,28 @@ function sweep(fieldToSweep, bombAmount, withGuessing = true, doLog = true) {
         }
 
         function setCellProbScoresAndSort(cellProbs) {
-            cellProbs.forEach(c => c.score = c.fraction * ((c.isOutsider && c.fraction < 0.44) ? 1.125 : 1));
-            return cellProbs.sort((a, b) => a.score - b.score);
+            cellProbs.forEach(c => c.score = c.fraction);
+            let sorted = cellProbs.sort((a, b) => a.score - b.score);
+            return sorted;
+        }
+
+        function validateCellProbs(cellProbs) {
+            cellProbs.forEach(cellProb => {
+                if (cellProb.fraction <= 0 || cellProb.fraction >= 1) {
+                    throw new Error("Impossible fraction found in uncertain mode!");
+                }
+            });
         }
 
         function evaluateCellProbs(candidateCellProbs, outsider) {
             let cellProbs = createCellProbsWithOutsider(candidateCellProbs, outsider);
+            validateCellProbs(cellProbs);
             cellProbs = setCellProbScoresAndSort(cellProbs);
 
-            let lowestCellProb = cellProbs[0];
-            let highestCellProb = cellProbs[cellProbs.length - 1];
-
-            if (lowestCellProb.fraction <= 0 || lowestCellProb.fraction >= 1) {
-                throw new Error("Impossible fraction found in uncertain mode!");
-            }
-
-            if (highestCellProb.fraction <= 0 || highestCellProb.fraction >= 1) {
-                throw new Error("Impossible fraction found in uncertain mode!");
-            }
-
             if (withGuessing && cellProbs.length > 0) {
-                let lowestWeight = lowestCellProb.score;
-                let highestWeight = (1 - highestCellProb.score) * 0.9;
-
-                let fieldToCheck = copyAndInitializeField(field);
-                let cellToFlag = highestCellProb.candidate.referenceCell;
-                let flaggedCell = fieldToCheck[cellToFlag.y][cellToFlag.x]
-                flaggedCell.isFlagged = true;
-                flaggedCell.isUnknown = false;
-
-                setCellNeighborInfo(fieldToCheck);
-
-                let sweepResult = sweep(fieldToCheck, bombAmount, false, false);
-                let reveals = sweepResult.interactions.filter(c => !c.isFlag);
-
-                if (reveals.length <= 2) {
-                    resultInfo.messages.push("Reveal lowest score cell (" + lowestCellProb.percentage + ")");
-                    revealCell(lowestCellProb.candidate);
-                } else {
-                    let reveal = reveals[0];
-                    resultInfo.messages.push("Reveal cell assuming bomb (" + highestCellProb.percentage + ")");
-                    let cellToReveal = field[reveal.cell.y][reveal.cell.x];
-                    revealCell(cellToReveal);
-                }
+                let bestScoreCellProb = cellProbs[0];
+                resultInfo.messages.push("Reveal lowest score cell (" + bestScoreCellProb.percentage + ")");
+                revealCell(bestScoreCellProb.candidate);
             } else {
                 resultInfo.messages.push("No certain cell found");
                 resultInfo.messages.push("Candidates with percentages:");
