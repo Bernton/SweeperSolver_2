@@ -475,7 +475,12 @@ function restartVirtualGame(config) {
     setWindowSeedRng();
     setVirtualGame();
 
+    window.virtualGame = createVirtualGame(config.width, config.height, config.bombAmount);
     window.virtualGame.field = createVirtualField(window.virtualGame);
+
+    function createVirtualGame(width, height, bombAmout) {
+        return { width: width, height: height, bombAmount: bombAmout, hasStarted: false };
+    }
 
     function createVirtualField(virtualGame) {
         let field = [];
@@ -507,18 +512,6 @@ function restartVirtualGame(config) {
         });
 
         return field;
-    }
-
-    function setVirtualGame() {
-        window.virtualGame = createGameFromConfig(config);
-    }
-
-    function createGameFromConfig(config) {
-        return createVirtualGame(config.width, config.height, config.bombAmount);
-    }
-
-    function createVirtualGame(width, height, bombAmout) {
-        return { width: width, height: height, bombAmount: bombAmout, hasStarted: false };
     }
 }
 
