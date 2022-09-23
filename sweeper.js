@@ -473,7 +473,6 @@ function setWindowSeedRng() {
 
 function restartVirtualGame(config) {
     setWindowSeedRng();
-    setVirtualGame();
 
     window.virtualGame = createVirtualGame(config.width, config.height, config.bombAmount);
     window.virtualGame.field = createVirtualField(window.virtualGame);
