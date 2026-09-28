@@ -54,3 +54,10 @@ All settings for the auto sweeper can be found within the global object *autoSwe
 **isRiddleFinderMode**: If enabled, the sweeper will stop on difficult problems for you to solve\
 **baseIdleTime**: Specifies the time the solver waits for each step in milliseconds\
 **gameFinishedIdleTime**:	Specifies the time the solver waits after it has finished a game in milliseconds
+
+## Headless benchmark:
+*bench.js* loads *sweeper.js* unchanged into a Node.js sandbox and plays seeded games in virtual mode (no browser needed, no dependencies). Same seeds give the same boards, so solver changes can be compared directly.
+
+`node bench.js [games=1000] [width=30] [height=16] [bombs=99] [firstSeed=1]`
+
+Note: the virtual game guarantees an opening (no bombs on or around the first click).
