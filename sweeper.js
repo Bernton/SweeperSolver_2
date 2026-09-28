@@ -377,23 +377,45 @@ function executeVirtualInteractions(interactions) {
             }
         });
     } else {
-        revealFirstCell(cells, interactions[0].cell, window.virtualGame.bombAmount);
+        let firstCell = interactions[0].cell;
+        placeBombsLikeWebsite(cells, firstCell, game.bombAmount);
+        setDigits(cells);
+        revealCell(firstCell);
         game.hasStarted = true;
     }
 
-    function revealFirstCell(cells, cell, bombAmount) {
-        let viableBombCells = getViableBombCells(cells, cell);
-        setBombs(viableBombCells, bombAmount);
-        setDigits(cells);
-        revealCell(cell);
+    // Same algorithm and order of random calls as minesweeperonline.com: bombs are placed uniformly,
+    // then moved off the first clicked cell and out of its 3x3 area, as far as there is room outside.
+    function placeBombsLikeWebsite(cells, firstCell, bombAmount) {
+        let nonBombs = cells.slice(0);
+
+        for (let i = 0; i < bombAmount && nonBombs.length > 0; i++) {
+            takeRandom(nonBombs).isBomb = true;
+        }
+
+        if (firstCell.isBomb && nonBombs.length > 0) {
+            takeRandom(nonBombs).isBomb = true;
+            firstCell.isBomb = false;
+            nonBombs.push(firstCell);
+        }
+
+        let isInFirstArea = (cell) => Math.abs(cell.x - firstCell.x) <= 1 && Math.abs(cell.y - firstCell.y) <= 1;
+        let outsideNonBombs = nonBombs.filter((cell) => !isInFirstArea(cell));
+
+        for (let y = firstCell.y - 1; y <= firstCell.y + 1; y++) {
+            for (let x = firstCell.x - 1; x <= firstCell.x + 1; x++) {
+                let cell = field[y] && field[y][x];
+
+                if (cell && cell.isBomb && outsideNonBombs.length > 0) {
+                    takeRandom(outsideNonBombs).isBomb = true;
+                    cell.isBomb = false;
+                }
+            }
+        }
     }
 
-    function setBombs(viableBombCells, bombAmount) {
-        for (let i = 0; i < bombAmount; i++) {
-            let bombsLeft = bombAmount - i;
-            let nonBombs = viableBombCells.filter((c) => !c.isBomb);
-            setBomb(nonBombs, bombsLeft);
-        }
+    function takeRandom(cells) {
+        return cells.splice(getRandomInt(cells.length), 1)[0];
     }
 
     function revealCell(cellToReveal) {
@@ -435,22 +457,8 @@ function executeVirtualInteractions(interactions) {
         });
     }
 
-    function setBomb(cells, bombAmount) {
-        if (bombAmount < 1) {
-            return;
-        }
-
-        let chosenIndex = getRandomInt(cells.length);
-        let chosenCell = cells[chosenIndex];
-        chosenCell.isBomb = true;
-    }
-
     function getRandomInt(max) {
         return Math.floor(window.getRandom() * Math.floor(max));
-    }
-
-    function getViableBombCells(cells, cell) {
-        return cells.filter((c) => !(c === cell || cell.neighbors.includes(c)));
     }
 
     function getCellsFromField(field) {

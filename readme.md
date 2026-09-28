@@ -56,7 +56,7 @@ All settings for the auto sweeper can be found within the global object *autoSwe
 **gameFinishedIdleTime**:	Specifies the time the solver waits after it has finished a game in milliseconds
 
 ## Headless benchmark (development):
-*bench/* plays seeded games headless in Node.js (no dependencies, no browser). It loads *sweeper.js* unchanged, so the script stays copy/pastable into the browser console.
+*bench/* plays seeded games headless in Node.js (no dependencies, no browser). It loads *sweeper.js* unchanged, so the script stays copy/pastable into the browser console. The virtual game places bombs exactly like minesweeperonline.com.
 
 `node bench/run.js [expert|sizes|stress|all] [--scale 0.1] [--compare HEAD] [--set key=value] [--ablate]`
 
@@ -64,5 +64,7 @@ All settings for the auto sweeper can be found within the global object *autoSwe
 - `--compare <git revision or file>` runs an older *sweeper.js* on the same boards; win differences are paired, which removes most of the noise
 - `--set` overrides a *solverConfig* value, `--ablate` re-evaluates every feature listed in *bench/features.js* against the full configuration
 - The robustness gate fails on any error, NaN or a single step slower than 2 s
+
+`node bench/verify-website.js` checks that the virtual game generates the same boards as the website code.
 
 Evaluation results are logged in *bench/RESULTS.md*.
