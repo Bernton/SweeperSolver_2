@@ -1576,18 +1576,20 @@ function sweep(fieldToSweep, bombAmount, withGuessing = true, doLog = true) {
 
         function calculateCandidateCellProbs(checkResult) {
             let candidates = checkResult.candidates;
-            let candidateAmount = candidates.reduce((a, b) => a + b.clusterSize, 0);
-            let unknownAmount = outsideUnknowns.length + candidateAmount;
             let combinationProbs = checkResult.mergedSummaries;
 
+            // Each candidate combination with k bombs leaves C(outside unknowns, flags left - k) ways to place the rest.
+            // Computed in log space, as these numbers overflow on large boards.
             combinationProbs.forEach((prob) => {
-                let distribution = approxHypergeometricDistribution(unknownAmount, totalFlagsLeft, candidateAmount, prob.flagAmount);
-                prob.weight = (prob.mergedCount * distribution) / binomialCoefficient(candidateAmount, prob.flagAmount);
+                prob.logWeight = Math.log(prob.mergedCount) + logBinomialCoefficient(outsideUnknowns.length, totalFlagsLeft - prob.flagAmount);
 
                 for (let i = 0; i < prob.values.length; i++) {
                     prob.values[i] /= prob.mergedCount * candidates[i].clusterSize;
                 }
             });
+
+            let maxLogWeight = combinationProbs.reduce((a, b) => Math.max(a, b.logWeight), -Infinity);
+            combinationProbs.forEach((prob) => (prob.weight = Math.exp(prob.logWeight - maxLogWeight)));
 
             let candidateValues = calculateCandidateValues(combinationProbs, candidates);
             let cellProbs = convertToCellProbs(candidateValues, candidates);
@@ -1681,7 +1683,7 @@ function sweep(fieldToSweep, bombAmount, withGuessing = true, doLog = true) {
 
         function validateCellProbs(cellProbs) {
             cellProbs.forEach((cellProb) => {
-                if (cellProb.fraction <= 0 || cellProb.fraction >= 1) {
+                if (!(cellProb.fraction > 0 && cellProb.fraction < 1)) {
                     throw new Error("Impossible fraction found in uncertain mode!");
                 }
             });
@@ -2168,16 +2170,18 @@ function simulate(element, eventName, mouseButton) {
     }
 }
 
-function approxHypergeometricDistribution(N, M, n, k) {
-    return n * 20 <= N ? binomialDistribution(n, M / N, k) : hypergeometricDistribution(N, M, n, k);
+function logBinomialCoefficient(n, k) {
+    return logFactorial(n) - logFactorial(k) - logFactorial(n - k);
 }
 
-function hypergeometricDistribution(N, M, n, k) {
-    return (binomialCoefficient(M, k) * binomialCoefficient(N - M, n - k)) / binomialCoefficient(N, n);
-}
+function logFactorial(n) {
+    let table = (logFactorial.table = logFactorial.table || [0]);
 
-function binomialDistribution(n, p, k) {
-    return binomialCoefficient(n, k) * Math.pow(p, k) * Math.pow(1 - p, n - k);
+    while (table.length <= n) {
+        table.push(table[table.length - 1] + Math.log(table.length));
+    }
+
+    return table[n];
 }
 
 function binomialCoefficient(n, k) {
