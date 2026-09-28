@@ -4,4 +4,4 @@
 //
 // Entry format: { key: "<solverConfig key>", values: [<all values worth comparing>] }
 
-module.exports = [];
+module.exports = [{ key: "firstClickCornerOffset", values: [null, 1, 2, 3] }];

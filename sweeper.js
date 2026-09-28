@@ -19,6 +19,11 @@ let autoSweepConfig = {
     state: { gameIndex: 0, lastSweepResult: { state: null, solver: null } }
 };
 
+// Solver features; bench/features.js lists the alternatives that bench/run.js --ablate re-evaluates
+let solverConfig = {
+    firstClickCornerOffset: 2 // null: first click in the center, n: n cells in from the top left corner (at most the center)
+};
+
 let autoSweepStats = { gameStats: [] };
 
 disableEndOfGamePrompt();
@@ -914,6 +919,13 @@ function sweep(fieldToSweep, bombAmount, withGuessing = true, doLog = true) {
         let height = field.length;
         let x = Math.floor(width / 2);
         let y = Math.floor(height / 2);
+        let offset = solverConfig.firstClickCornerOffset;
+
+        if (offset !== null) {
+            x = Math.min(offset, x);
+            y = Math.min(offset, y);
+        }
+
         revealCell(field[y][x]);
     }
 
