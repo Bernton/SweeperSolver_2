@@ -187,3 +187,29 @@ Rechecks of offset 2 vs center on new seeds: big 50x50/500 seeds 401-2800: +2.13
 Offset 2 is best or tied best on every size, so it is the default for all sizes (no expert-specific setting needed). Stress suite passes the gate with it.
 Kept for re-evaluation in bench/features.js: null (center), 1, 2, 3.
 
+## 6. Snapshot of the current state (db6cee9), reference for the next features
+
+| Preset | Variant | Win % | Δ win vs variant 0 (paired) | Games played differently | Guesses/game | ms/game | Slowest step ms | Errors |
+|---|---|---|---|---|---|---|---|---|
+| expert 30x16/99 | 0 | 52.29 ± 0.50 |  |  | 2.68 | 12.8 | 63 | 0 |
+| beginner 9x9/10 | 0 | 96.86 ± 0.25 |  |  | 0.10 | 0.5 | 12 | 0 |
+| intermediate 16x16/40 | 0 | 89.84 ± 0.43 |  |  | 0.43 | 2.5 | 17 | 0 |
+| wide 60x16/198 | 0 | 34.20 ± 1.50 |  |  | 3.98 | 35.2 | 31 | 0 |
+| square 24x24/115 | 0 | 59.20 ± 1.10 |  |  | 2.11 | 14.4 | 48 | 0 |
+| big 50x50/500 | 0 | 34.25 ± 2.37 |  |  | 3.00 | 128.0 | 33 | 0 |
+| max 99x99/1960 | 0 | 12.50 ± 5.23 |  |  | 3.90 | 1010.7 | 157 | 0 |
+| max 99x99/2450 (25%) | 0 | 0.00 ± 0.00 |  |  | 6.50 | 1052.9 | 117 | 0 |
+| max 99x99/2940 (30%) | 0 | 0.00 ± 0.00 |  |  | 4.75 | 137.3 | 37 | 0 |
+| max 99x99/3920 (40%) | 0 | 0.00 ± 0.00 |  |  | 4.06 | 102.4 | 33 | 0 |
+| max 99x99/8820 (90%) | 0 | 0.00 ± 0.00 |  |  | 1.50 | 24.6 | 15 | 0 |
+| max 99x99/9795 (overfull) | 0 | 100.00 ± 0.00 |  |  | 1.00 | 127.2 | 133 | 0 |
+| dense 30x16/200 | 0 | 0.00 ± 0.00 |  |  | 4.14 | 5.8 | 17 | 0 |
+| overfull 9x9/75 | 0 | 92.50 ± 1.86 |  |  | 1.28 | 0.4 | 8 | 0 |
+| line 1x30/5 | 0 | 48.80 ± 2.24 |  |  | 2.90 | 0.2 | 10 | 0 |
+| tiny 2x2/3 | 0 | 100.00 ± 0.00 |  |  | 0.00 | 0.0 | 0 | 0 |
+| empty 10x10/0 | 0 | 100.00 ± 0.00 |  |  | 0.00 | 0.0 | 0 | 0 |
+
+Robustness gate (current version: no errors, no step over 2000 ms): PASS
+
+Full `all` suite: 86 s on 4 threads (entry 1: 336 s).
+
