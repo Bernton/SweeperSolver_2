@@ -365,7 +365,6 @@ function executeVirtualInteractions(interactions) {
 
     let game = window.virtualGame;
     let field = window.virtualGame.field;
-    let cells = getCellsFromField(field);
 
     if (game.hasStarted) {
         interactions.forEach((action) => {
@@ -378,6 +377,7 @@ function executeVirtualInteractions(interactions) {
         });
     } else {
         let firstCell = interactions[0].cell;
+        let cells = field.flat();
         placeBombsLikeWebsite(cells, firstCell, game.bombAmount);
         setDigits(cells);
         revealCell(firstCell);
@@ -459,15 +459,6 @@ function executeVirtualInteractions(interactions) {
 
     function getRandomInt(max) {
         return Math.floor(window.getRandom() * Math.floor(max));
-    }
-
-    function getCellsFromField(field) {
-        return field.reduce((rowA, rowB) =>
-            rowA.concat(
-                rowB.reduce((cellA, cellB) => cellA.concat(cellB), []),
-                []
-            )
-        );
     }
 }
 

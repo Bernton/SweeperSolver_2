@@ -6,6 +6,7 @@
 //   --scale <factor>       multiply the games of every preset (e.g. 0.1 for a quick run)
 //   --games <n>            play exactly n games per preset
 //   --seed <n>             first seed (default 1)
+//   --only <text>          only presets whose name contains text
 //   --compare <rev|path>   also run sweeper.js from a git revision (e.g. HEAD, HEAD~2) or a file, as reference
 //   --set <key>=<json>     override a solverConfig value for the current version (repeatable)
 //   --ablate               also run every alternative value of every feature in bench/features.js
@@ -56,6 +57,10 @@ async function main() {
         throw new Error("Unknown suite " + options.suite + ", choose one of: " + Object.keys(suites).join(", "));
     }
 
+    if (options.only) {
+        presets = presets.filter((preset) => preset.name.includes(options.only));
+    }
+
     presets = presets.map((preset) => ({ ...preset, games: options.games ?? Math.max(1, Math.round(preset.games * options.scale)) }));
 
     let currentSource = fs.readFileSync(path.join(repoRoot, "sweeper.js"), "utf8");
@@ -91,7 +96,7 @@ async function main() {
 }
 
 function parseArgs(args) {
-    let options = { suite: "expert", scale: 1, games: null, seed: 1, compare: null, set: {}, ablate: false, threads: os.cpus().length };
+    let options = { suite: "expert", scale: 1, games: null, seed: 1, only: null, compare: null, set: {}, ablate: false, threads: os.cpus().length };
 
     for (let i = 0; i < args.length; i++) {
         let arg = args[i];
@@ -102,6 +107,8 @@ function parseArgs(args) {
             options.games = Number(args[++i]);
         } else if (arg === "--seed") {
             options.seed = Number(args[++i]);
+        } else if (arg === "--only") {
+            options.only = args[++i];
         } else if (arg === "--compare") {
             options.compare = args[++i];
         } else if (arg === "--set") {
