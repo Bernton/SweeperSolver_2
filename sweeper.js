@@ -962,25 +962,49 @@ function sweep(fieldToSweep, bombAmount, withGuessing = true, doLog = true) {
         return field;
     }
 
+    // Runs for every cell on every step, so plain loops instead of applyToCells/applyToNeighbors.
+    // Neighbor order is the same as in applyToNeighbors (x offset outer, y offset inner).
     function setCellNeighborInfo(field) {
-        applyToCells(field, (cell) => {
-            cell.neighbors = [];
-            cell.unknownNeighborAmount = 0;
-            cell.flaggedNeighborAmount = 0;
+        let height = field.length;
 
-            applyToNeighbors(field, cell, (neighborCell) => {
-                if (neighborCell.isUnknown) {
-                    cell.unknownNeighborAmount += 1;
-                } else if (neighborCell.isFlagged) {
-                    cell.flaggedNeighborAmount += 1;
+        for (let y = 0; y < height; y++) {
+            let width = field[y].length;
+
+            for (let x = 0; x < width; x++) {
+                let cell = field[y][x];
+                let neighbors = [];
+                let unknownNeighborAmount = 0;
+                let flaggedNeighborAmount = 0;
+
+                for (let neighborX = x - 1; neighborX <= x + 1; neighborX++) {
+                    if (neighborX < 0 || neighborX >= width) {
+                        continue;
+                    }
+
+                    for (let neighborY = y - 1; neighborY <= y + 1; neighborY++) {
+                        if (neighborY < 0 || neighborY >= height || (neighborX === x && neighborY === y)) {
+                            continue;
+                        }
+
+                        let neighborCell = field[neighborY][neighborX];
+
+                        if (neighborCell.isUnknown) {
+                            unknownNeighborAmount += 1;
+                        } else if (neighborCell.isFlagged) {
+                            flaggedNeighborAmount += 1;
+                        }
+
+                        neighbors.push(neighborCell);
+                    }
                 }
 
-                cell.neighbors.push(neighborCell);
-            });
-
-            cell.hiddenNeighborAmount = cell.unknownNeighborAmount + cell.flaggedNeighborAmount;
-            cell.neighborAmount = cell.neighbors.length;
-        });
+                cell.neighbors = neighbors;
+                cell.unknownNeighborAmount = unknownNeighborAmount;
+                cell.flaggedNeighborAmount = flaggedNeighborAmount;
+                cell.hiddenNeighborAmount = unknownNeighborAmount + flaggedNeighborAmount;
+                cell.neighborAmount = neighbors.length;
+            }
+        }
     }
 
     function checkAllValidCombinations(field, borderCellGroupings, outsideUnknowns, totalFlagsLeft) {
@@ -1626,6 +1650,16 @@ function sweep(fieldToSweep, bombAmount, withGuessing = true, doLog = true) {
             cellProbs.forEach((cellProb) => (averageFlagsInBorder += cellProb.fraction));
             let averageFlagsLeftOutside = totalFlagsLeft - averageFlagsInBorder;
             let outsideUnknownsFraction = averageFlagsLeftOutside / outsideUnknowns.length;
+            let outsideUnknownSet = new Set(outsideUnknowns);
+            let candidateFractions = new Map();
+
+            cellProbs.forEach((cellProb) => {
+                let key = cellProb.candidate.x + "-" + cellProb.candidate.y;
+
+                if (!candidateFractions.has(key)) {
+                    candidateFractions.set(key, cellProb.fraction);
+                }
+            });
 
             outsideUnknowns.forEach((outsider) => {
                 let probabilityOfZero = 1;
@@ -1634,12 +1668,10 @@ function sweep(fieldToSweep, bombAmount, withGuessing = true, doLog = true) {
                     let probabilityOfBomb;
 
                     if (neighbor.isBorderCell && neighbor.isUnknown) {
-                        probabilityOfBomb = cellProbs.find((cellProb) => {
-                            return cellProb.candidate.x === neighbor.x && cellProb.candidate.y === neighbor.y;
-                        }).fraction;
+                        probabilityOfBomb = candidateFractions.get(neighbor.x + "-" + neighbor.y);
                     } else if (neighbor.isFlagged) {
                         probabilityOfBomb = 1;
-                    } else if (outsideUnknowns.includes(neighbor)) {
+                    } else if (outsideUnknownSet.has(neighbor)) {
                         probabilityOfBomb = outsideUnknownsFraction;
                     }
 
@@ -1897,24 +1929,23 @@ function sweep(fieldToSweep, bombAmount, withGuessing = true, doLog = true) {
             }
         });
 
-        let fieldBorderUnknowns = [];
+        let borderUnknownsByFieldCell = new Map();
         let borderUnknowns = [];
 
         fieldBorderDigits.forEach((fieldDigitBorderCell, i) => {
             fieldDigitBorderCell.neighbors.forEach((neighbor) => {
                 if (neighbor.isUnknown) {
-                    if (!fieldBorderUnknowns.includes(neighbor)) {
+                    let borderUnknown = borderUnknownsByFieldCell.get(neighbor);
+
+                    if (!borderUnknown) {
                         neighbor.isBorderCell = true;
-                        fieldBorderUnknowns.push(neighbor);
-                        let created = createBorderUnknown(neighbor);
-                        borderUnknowns.push(created);
-                        borderDigits[i].neighbors.push(created);
-                        created.neighbors.push(borderDigits[i]);
-                    } else {
-                        let indexOfUnknown = fieldBorderUnknowns.indexOf(neighbor);
-                        borderDigits[i].neighbors.push(borderUnknowns[indexOfUnknown]);
-                        borderUnknowns[indexOfUnknown].neighbors.push(borderDigits[i]);
+                        borderUnknown = createBorderUnknown(neighbor);
+                        borderUnknownsByFieldCell.set(neighbor, borderUnknown);
+                        borderUnknowns.push(borderUnknown);
                     }
+
+                    borderDigits[i].neighbors.push(borderUnknown);
+                    borderUnknown.neighbors.push(borderDigits[i]);
                 }
             });
         });

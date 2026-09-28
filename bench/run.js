@@ -247,8 +247,8 @@ function printResults(variants, presets, results) {
     let gatePassed = true;
     let errorLines = [];
 
-    console.log("\n| Preset | Variant | Win % | Δ win vs variant " + referenceIndex + " (paired) | Guesses/game | ms/game | Slowest step ms | Errors |");
-    console.log("|---|---|---|---|---|---|---|---|");
+    console.log("\n| Preset | Variant | Win % | Δ win vs variant " + referenceIndex + " (paired) | Games played differently | Guesses/game | ms/game | Slowest step ms | Errors |");
+    console.log("|---|---|---|---|---|---|---|---|---|");
 
     presets.forEach((preset, presetIndex) => {
         variants.forEach((variant, variantIndex) => {
@@ -260,9 +260,12 @@ function printResults(variants, presets, results) {
             let errors = games.filter((g) => g.error);
             let slowestStep = Math.max(...games.map((g) => g.maxStepTime));
             let delta = "";
+            let playedDifferently = "";
 
             if (variantIndex !== referenceIndex) {
-                delta = formatPairedDelta(results[referenceIndex][presetIndex], games);
+                let referenceGames = results[referenceIndex][presetIndex];
+                delta = formatPairedDelta(referenceGames, games);
+                playedDifferently = count(games, (g, i) => g.won !== referenceGames[i].won || g.guesses !== referenceGames[i].guesses || g.steps !== referenceGames[i].steps);
             }
 
             if (variantIndex === currentIndex && (errors.length > 0 || slowestStep > SLOW_STEP_TIME)) {
@@ -274,6 +277,7 @@ function printResults(variants, presets, results) {
                 " | " + variantIndex +
                 " | " + (winRate * 100).toFixed(2) + " ± " + (winSe * 100).toFixed(2) +
                 " | " + delta +
+                " | " + playedDifferently +
                 " | " + (sum(games, (g) => g.guesses) / n).toFixed(2) +
                 " | " + (sum(games, (g) => g.time) / n).toFixed(1) +
                 " | " + slowestStep.toFixed(0) + (slowestStep > SLOW_STEP_TIME ? " ⚠" : "") +
@@ -317,7 +321,7 @@ function formatPairedDelta(referenceGames, games) {
 }
 
 function count(values, predicate) {
-    return values.reduce((a, b) => a + (predicate(b) ? 1 : 0), 0);
+    return values.reduce((a, b, i) => a + (predicate(b, i) ? 1 : 0), 0);
 }
 
 function sum(values, selector) {
