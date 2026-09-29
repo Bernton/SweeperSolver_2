@@ -15,8 +15,9 @@ State, review findings and the prioritized plan. Measurements and history are in
   (look-ahead, exact analysis of each value the cell can show); with up to 28 unknown cells left, the exact best guess
   (search over all bomb configurations and strategies). First click on the fourth cell from the top left corner on
   expert, the third on other boards (`solverConfig.boardSettings`).
-- Works on all website sizes (up to 99x99, any bomb count) when the board is consistent (see L3 for user flags);
-  robustness gate passes.
+- Works on all website sizes (up to 99x99, any bomb count); robustness gate passes. Boards that no bomb configuration
+  fits (e.g. a wrong flag set by hand) are reported and no move is made (L3); wrong flags that still fit the digits
+  are not detected (L3b).
 - `sweeper.js` stays a single copy/pastable script; the console output shows bomb probability, statistics and the
   evaluation for every candidate.
 - Benchmark: headless, website-exact boards (verified), paired comparisons, feature ablation, expected win. 10,000 expert
@@ -57,19 +58,19 @@ usability, and the owner's rules (one copy/pastable script, no magic numbers).
 
 | Rank | ID | Finding | Impact | Conf. | Effort | Priority | Reviews |
 |---|---|---|---|---|---|---|---|
-| 1 | L1 | [s] throws forever after a loss the auto sweeper did not cause | high | high | S | 3.0 | WU, CH |
-| 1 | L2 | [w] does nothing on fresh boards after the first game; repeated [e] prints nothing | high | high | S | 3.0 | WU |
+| 1 | L1 | **Fixed**: [s] throws forever after a loss the auto sweeper did not cause | high | high | S | 3.0 | WU, CH |
+| 1 | L2 | **Fixed**: [w] does nothing on fresh boards after the first game; repeated [e] prints nothing | high | high | S | 3.0 | WU |
 | 3 | B1 | Hung game makes expected win NaN; timeout per task, not per game | med-high | high | S | 2.5 | BM, CH |
 | 3 | B2 | Seed discipline: seed ledger (started) and a fixed adoption rule | med-high | high | S | 2.5 | BM |
 | 3 | B3 | Ablation blind spot: board-specific values hide the general ones | med-high | high | S | 2.5 | BM |
 | 3 | S1-S4 | Four decision-preserving speed-ups (0.70x expert, 0.63x 99x99) | med-high | high | S | 2.5 | PF |
 | 7 | W1 | Tie-breaking and scoring all tied cells (+0.24 ± 0.07 on fresh seeds) | high | medium | S | 2.4 | SA |
-| 8 | L3 | Inconsistent positions (wrong flags, wrong count): deaths on "certain" moves, crash | high | high | S-M | 2.0 | SC, WU |
-| 8 | L5 | Duplicate auto-sweep loops after pasting again or repeated [s] | medium | high | S | 2.0 | WU |
+| 8 | L3 | **Fixed** (see L3b): inconsistent positions (wrong flags, wrong count): deaths on "certain" moves, crash | high | high | S-M | 2.0 | SC, WU |
+| 8 | L5 | **Fixed**: duplicate auto-sweep loops after pasting again or repeated [s] | medium | high | S | 2.0 | WU |
 | 8 | B12 | Strict identity check (every step's moves) for decision-preserving changes | medium | high | S | 2.0 | PF |
 | 8 | C2 | Remaining magic numbers (owner rule) | medium | high | S | 2.0 | CH |
-| 12 | L4 | Bomb count from the options form instead of the running game | medium | medium | S | 1.6 | WU, SC |
-| 13 | L6 | Keybinds fire in page inputs, with Ctrl/Meta/Alt and on key repeat | low-med | high | S | 1.5 | WU, CH |
+| 12 | L4 | Bomb count from the options form instead of the running game (only seen on the test page: check on the website first) | medium | medium | S | 1.6 | WU, SC |
+| 13 | L6 | **Fixed**: keybinds fire in page inputs, with Ctrl/Meta/Alt and on key repeat | low-med | high | S | 1.5 | WU, CH |
 | 13 | L8 | Stats: time is solver time only, "Highest [3] time" misses guesses, empty [i], wrong `median` | low-med | high | S | 1.5 | WU, CH |
 | 13 | L13 | Console: only 3 of the tied cells evaluated, repeated numbers, noise lines | low-med | high | S | 1.5 | WU |
 | 13 | B7 | `verify-forced` does not check `getForcedWinChance`; expected win "n/a" on overfull boards | low-med | high | S | 1.5 | BM, CH |
@@ -90,6 +91,7 @@ usability, and the owner's rules (one copy/pastable script, no magic numbers).
 | 25 | B11 | Command-line arguments not validated | low | high | S | 1.0 | CH |
 | 25 | C7 | Remaining documentation fixes (README options, sample output, settings list, entry 15 note) | low | high | S | 1.0 | CH, BM |
 | 25 | C10 | Naming typos, swapped offset names, implicit globals, positional booleans | low | high | S | 1.0 | CH |
+| 34 | L3b | Wrong flags that still fit the digits are trusted (152 of 300 games with one wrong flag die) | medium | medium | M | 0.8 | OR |
 | 34 | S5 | Benchmark forced check costs 8-9% of trial time | low-med | medium | S-M | 0.8 | PF |
 | 34 | S8 | Minor speed leftovers (settings copy per call, border cells built twice, closures) | low | medium | S | 0.8 | PF |
 | 36 | W2 | Paired JSMinesweeper harness to explain the remaining ~0.6 point gap | high | low | M | 0.75 | SA |
@@ -107,7 +109,8 @@ usability, and the owner's rules (one copy/pastable script, no magic numbers).
 | - | L11 | High scores: automated wins may be submitted as "cancel" | owner decision | | | | WU, OR |
 | - | C8 | Legacy browser virtual mode and `Math.seedrandom` in the pasted script | owner decision | | | | CH |
 
-**Execution order** (the ranking, adjusted for dependencies): (1) L1, L2, L3, L5, L4, L6: live-use bugs in one pass;
+**Execution order** (the ranking, adjusted for dependencies): (1) L1, L2, L3, L5, L4, L6: live-use bugs in one pass
+(done except L4, which waits for a check on the website, and L3b, see findings);
 (2) B1, B2, B3, B12: benchmark integrity, B12 before the speed-ups; (3) S1-S4; (4) W1 under the B2 rule; (5) the
 priority 1.5 group (C2, C3, C1, C6, C9, B7, L8, L13); (6) L7, B4, B5, C5; then the rest by rank. C4 goes with the
 first change that needs it (S7, W3).
@@ -116,21 +119,29 @@ first change that needs it (S7, W3).
 
 ### L: Live use on the website
 
-- **L1** (high, verified) After any loss the auto sweeper did not cause (e.g. played with [w] or by hand), [s] throws
+- **L1** **Fixed** (entry 20). (high, verified) After any loss the auto sweeper did not cause (e.g. played with [w] or by hand), [s] throws
   "Died while not guessing!" and keeps throwing until the page is reloaded: `autoSweep` checks the previous result and
   never resets it. Fix: warn instead of throwing in live mode, reset the state when the auto sweeper starts.
-- **L2** (high, verified) The board-state cache of `sweepStep` makes [w] do nothing on every fresh board after the first
+- **L2** **Fixed** (entry 20). (high, verified) The board-state cache of `sweepStep` makes [w] do nothing on every fresh board after the first
   game (all fresh boards look alike) and makes a repeated [e]/[shift+E] print nothing. Fix: only suppress key repeats.
-- **L3** (medium, verified) Inconsistent positions (a wrong user flag, too many flags, a wrong bomb count) lead to deaths
+- **L3** **Fixed** (entry 20), except L3b. (medium, verified) Inconsistent positions (a wrong user flag, too many flags, a wrong bomb count) lead to deaths
   on "certain" moves (180 of 300 test games with one wrong flag), reveal-all behavior and a crash in
   `onIsolatedUnknowns`. Fix: detect "no valid combination", negative bombs left, bombs left without unknown cells; warn
   and make no move.
-- **L4** (medium, verified in the harness) The bomb count is read from the options form, not from the running game:
-  changing options before a new game gives wrong probabilities and wrong certain moves. Fix: bombs = mine counter on
-  the page plus flags on the board.
-- **L5** (medium, verified) Pasting again or pressing [s] several times (or holding it) starts extra auto-sweep loops
+- **L3b** (medium, verified headless) A wrong flag that still fits the digits cannot be detected while the solver trusts
+  flags: with one wrong flag, 152 of 300 expert games still die on a non-guess move (the auto sweeper now stops with
+  a warning instead of throwing). Possible fix: treat flags the solver did not set itself as unknown cells (the
+  solver re-derives correct flags; one it finds safe is unflagged, then revealed). Changes live play only; check
+  that the benchmark plays identically.
+- **L4** (medium, **only seen on the test page, not yet confirmed on the website**) The bomb count is read from the
+  options form, not from the running game: changing options before a new game gives wrong probabilities and wrong
+  certain moves. The test page's options form and its link to the next game are a guess (the website's page code is
+  not available here); the manual check or the page source decides (entry 20). Fix if confirmed: bombs = mine counter
+  plus flags on the board; the website's counter shows at most 999 (its game code), so above that the form stays the
+  source.
+- **L5** **Fixed** (entry 20). (medium, verified) Pasting again or pressing [s] several times (or holding it) starts extra auto-sweep loops
   that [d] cannot stop, and a new paste silently resets the stats. Fix: reuse existing state, ignore [s] while running.
-- **L6** (medium-low, verified) Keybinds fire while typing in the page's inputs (e.g. the custom size fields) and with
+- **L6** **Fixed** (entry 20). (medium-low, verified) Keybinds fire while typing in the page's inputs (e.g. the custom size fields) and with
   Ctrl/Meta/Alt (Ctrl+S starts the auto sweeper). Fix: ignore input targets and modified keys.
 - **L7** (medium, verified) Auto sweeper pacing: about 80% of its time is waiting for browser timers; about 2.8 expert
   games per second where about 19 would be possible (7x). Run steps time-boxed per timer tick.

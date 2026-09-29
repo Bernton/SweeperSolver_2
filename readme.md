@@ -27,7 +27,7 @@ sweep step certain without board interaction **[shift+e]**:\
 Determines a single step and outputs the certain interactions to the console, or the step details if there are none.
  
  start auto sweeper **[s]**:\
- Starts the auto sweeper, that will execute steps automatically until stopped.
+ Starts the auto sweeper, that will execute steps automatically until stopped (starts a new game first if the current one is over).
  
  
  stop auto sweeper **[d]**:\
@@ -44,6 +44,8 @@ Resets the game stats for the auto sweeper.
 
 toggle log **[l]**:\
 Toggles if the auto sweeper should output its steps to the console.
+
+Holding **[w]** or **[e]** keeps stepping while the board changes. Keys are ignored while typing in a field of the page and together with Ctrl, Alt or Meta, so browser shortcuts stay untouched. Pasting the script again replaces the running version and keeps the game stats.
 
 The functionality that is offered with keybinds and more can also be called directly in the console as functions.
 
@@ -67,6 +69,8 @@ When no certain move is left, **[e]** / **[shift+e]** show:
 - **survive it and next move**: exact chance to survive this guess and the safest move after it (averaged over the numbers the cell can show); computed for the cells with the lowest bomb probability
 - **win chance with best play**: exact chance to win the game when guessing this cell and playing optimally afterwards; computed in endgames (see *endgameSearchMaxUnknowns*)
 - **evaluation**: the score the solver ranks guesses by (higher is better); its definition is printed in the *Evaluation:* line and changes as the solver's guess logic is improved
+
+If no bomb configuration fits the board (e.g. a flag set by hand is wrong or there are more flags than bombs), a warning *[!] No bomb configuration fits the board* names the reason and no move is made; the auto sweeper stops. It also stops with a warning when it loses on a move it considered certain, which means the board was not what it assumed (usually a wrong flag set by hand).
 
 The suggestion can be a cell with a slightly higher bomb probability when it is more likely to lead to a safe next move. In an endgame where no unknown cell can give information anymore, a line *Forced: ...* says that the outcome is pure chance. *Cluster* marks cells that share all their neighboring digits (same bomb probability), *Outsider* a cell not next to any digit (the one most likely to open an area). **[w]** / **[shift+w]** print the guess they make in the same format.
 

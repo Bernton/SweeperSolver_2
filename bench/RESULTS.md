@@ -592,3 +592,42 @@ Expert seed blocks used so far (use the next unused block for confirmations; dec
 | 500001-504000, 600001-604000, 700001-703000 | review: re-checks of adopted features |
 | **800001 and up** | unused |
 
+
+## 20. Live-use fixes L1, L2, L3, L5, L6 (ROADMAP)
+
+**Which findings could come from the test page alone.** The live tests run the website's own game code (the
+`Minesweeper` class, which builds the board, the mine counter and the face) in headless Chromium and paste the script
+the way Chrome's console does. The page around it is a reconstruction: the options form and how the next game reads
+it are guesses, since the website's page code is not reachable from the test environment. Re-run on a page without
+the reconstructed options behavior (fixed options):
+
+| Finding | Shown by | Depends on the reconstructed page? | Result on the page without it |
+|---|---|---|---|
+| L1 [s] throws after a loss not caused by the auto sweeper | code (`autoSweep`), live test | no: face class and board come from the website's code | reproduced: "Died while not guessing!" on every [s], also after [d] mid-game and a manual loss |
+| L2 [w] does nothing on a new board | code (`sweepStep` cache), live test | no: the website's `newGame` resets every square to "square blank" | reproduced: [w] did nothing on the new board |
+| L3 inconsistent positions | headless benchmark sandbox, live test | no: flags are the website's classes | reproduced headless: 180 of 300 games with one wrong flag died on non-guess moves, 2 crashed |
+| L4 bomb count from the options form | live test only | **yes** | not decided; waits for a check on the website |
+| L5 duplicate loops | live test (Chrome console semantics) | no | reproduced: a loop of an earlier paste kept running after [d] |
+| L6 keys in fields and with Ctrl/Alt/Meta | live test | fields: the website has input fields in its options (the script reads the custom mine count from one); modifier keys are the browser's | modifier part independent of the page |
+
+**Fixes** (all in `sweeper.js`):
+- L1: starting the auto sweeper resets its last result and starts a new game if the current one is already over; a
+  loss on a non-guess move of the auto sweeper stops it with a warning (instead of throwing forever).
+- L2: the board-state check only applies to held keys (key repeat): a held [w]/[e] keeps playing while the steps change
+  the board, every separate press always acts.
+- L3: a new state `invalid` with a warning and no move for more flags than bombs, more bombs left than unknown cells, a
+  digit with more flagged neighbors than its number, a grouping without any valid bomb combination, and no combination
+  that fits the bombs left. The auto sweeper stops on it.
+- L5: each start of the auto sweeper gets a run id and only the newest continues (repeated [s], held [s], pasting
+  again); pasting again replaces the key handler and keeps the stats.
+- L6: keys are ignored while typing in input fields and with Ctrl, Alt or Meta; [s], [d], [i], [o], [k], [l] ignore
+  key repeat.
+
+**Checks**:
+- `bench/run.js all --scale 0.2 --compare HEAD`: 0 games played differently in every suite, 0 errors (consistent
+  positions never reach the new checks).
+- Headless, one wrong flag next to a digit after step 5 (300 expert games): 32 detected as invalid, 0 crashes, 152
+  still die on a non-guess move (wrong flags that fit the digits: ROADMAP L3b), 57 won.
+- Live tests (Chromium, the website's game code): all reproductions above now behave as intended; held [shift+E]
+  prints once, held [w] keeps playing, held [s] runs one loop that [d] stops, Ctrl+S/Ctrl+W/Ctrl+E/Alt+W/Meta+W and
+  typing "sweep" in a field do nothing, [s] on an invalid board warns once and does not start.
