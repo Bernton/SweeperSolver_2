@@ -91,6 +91,8 @@ usability, and the owner's rules (one copy/pastable script, no magic numbers).
 | 25 | B11 | **Fixed**: command-line arguments not validated | low | high | S | 1.0 | CH |
 | 25 | C7 | **Fixed**: remaining documentation fixes (README options, sample output, settings list, entry 15 note) | low | high | S | 1.0 | CH, BM |
 | 25 | C10 | Naming typos, swapped offset names, implicit globals, positional booleans | low | high | S | 1.0 | CH |
+| 34 | W10 | Measure the headroom to the optimum (bound for a player who sees the bombs, playouts of every candidate) | medium | medium | M | 0.8 | OR |
+| 34 | L14 | Pasting the script a second time in Firefox is untested (Chrome allows redeclaring `let`) | low | medium | S | 0.8 | OR |
 | 34 | S5 | Benchmark forced check costs 8-9% of trial time | low-med | medium | S-M | 0.8 | PF |
 | 34 | S8 | Minor speed leftovers (settings copy per call, border cells built twice, closures) | low | medium | S | 0.8 | PF |
 | 36 | W2 | Paired JSMinesweeper harness to explain the remaining ~0.6 point gap | high | low | M | 0.75 | SA |
@@ -138,7 +140,11 @@ first change that needs it (S7, W3).
   certain moves. The test page's options form and its link to the next game are a guess (the website's page code is
   not available here); the manual check or the page source decides (entry 20). Fix if confirmed: bombs = mine counter
   plus flags on the board; the website's counter shows at most 999 (its game code), so above that the form stays the
-  source.
+  source. **Check on the website** (about a minute): paste the script, start an expert game, open the options, select
+  beginner (or change the custom mines) and close the options without starting a new game, then run
+  `getBombAmount()` in the console: 10 (or the custom value) while the expert board is shown confirms L4. The test
+  environment cannot reach minesweeperonline.com (network policy of the cloud environment; allowing the domain in the
+  environment's network settings would make the real page testable).
 - **L5** **Fixed** (entry 20). (medium, verified) Pasting again or pressing [s] several times (or holding it) starts extra auto-sweep loops
   that [d] cannot stop, and a new paste silently resets the stats. Fix: reuse existing state, ignore [s] while running.
 - **L6** **Fixed** (entry 20). (medium-low, verified) Keybinds fire while typing in the page's inputs (e.g. the custom size fields) and with
@@ -159,6 +165,9 @@ first change that needs it (S7, W3).
   first 3 get an evaluation and the *Evaluation:* line reads as if those were all; evaluated lines repeat one number
   twice (statistic and evaluation are equal today); "Candidate amount" and "took ... milliseconds" are noise for
   humans. Partly resolved by W1 (all tied cells evaluated).
+- **L14** (low, not tested) Pasting the script a second time: Chrome's console allows redeclaring the script's `let`
+  variables (the live tests use its semantics); Firefox's console may refuse the second paste. Test in Firefox; if it
+  fails, the global state could move to `window` properties (as done for the key handler and the stats).
 - **L11** (owner decision, see below) The script replaces the page's `prompt` with one returning "cancel": fast
   automated wins may be submitted to the public high scores under the name "cancel" (inferred from the website code).
 
@@ -186,6 +195,32 @@ first change that needs it (S7, W3).
   exists at 4% of mid-game guesses, but the solver guessed inside one in 4 of 3000 games.
 - **W6** (tiny) The isolated-unknowns path (no digits next to unknown cells) skips the endgame search and look-ahead;
   about 10 guesses in 2000 expert games.
+- **W10** (research) Measure the headroom instead of estimating it (see "Theoretical maximum" below): (a) the upper
+  bound of a player who sees the bombs except for indistinguishable layouts, on 10000 boards (a separate benchmark
+  script, medium effort); (b) at a few hundred sampled guess positions, play out every candidate with the solver and
+  compare with its choice (any gain found is real; expensive, affordable after the speed-ups S1-S4).
+
+#### Theoretical maximum and the gap to JSMinesweeper (estimate of 2026-09-29)
+
+- The optimum is well defined: a game is a finite decision problem against chance (all boards equally likely apart
+  from the website's safe 3x3 first click area; a position is the set of bomb layouts consistent with what is
+  visible; finitely many moves). Its value, including the choice of the first click, is one exact number. It is
+  computed by the same search as the endgame search (which plays it exactly with up to 28 unknown cells), but for a
+  whole expert game there are about 10^100 or more consistent layouts after the opening: not computable with any
+  realistic resources. Flags and chording do not change it (they reveal no information).
+- Bounds: at least the best measured play, JSMinesweeper's 54.4% on our boards (Hill's Java solver reports 54.3%).
+  An upper bound that can be computed: a player who sees the bombs except for layouts no revealable number can tell
+  apart (each such spot with k layouts caps that board at 1/k); it ignores the guesses caused by not knowing yet
+  (the early game), so it is expected to be many points too high.
+- **Estimate: about 55% (most likely 54.7-56%)**, a judgement, not a result: endgames with up to 28 unknown cells are
+  already optimal; about 30% of games reach a forced position (about 35% of losses, pure chance from there); the first
+  guess among the 6 safest cells showed no headroom beyond ±0.13 per position (entry 15); gains shrink (+3.4 points
+  so far, JSMinesweeper's +0.86 from better tie-breaking, W1 +0.24). The rest would come from planning several moves
+  ahead in the middle game, which no current solver does exactly.
+- Surpassing JSMinesweeper: W1 plus what W2 finds should bring parity within about 0.2-0.3 points; clearly beating it
+  needs something neither does yet (more computation per guess is available, as run time weighs less than win rate:
+  deeper look-ahead, wider exact search; both measured small so far: entry 15, entry 19). Showing a lead of 0.1-0.2
+  points needs on the order of 100000 paired games per comparison (one paired 10000-game run resolves about ±0.3).
 
 ### B: Benchmark and methodology
 

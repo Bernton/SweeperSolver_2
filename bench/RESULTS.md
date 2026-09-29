@@ -610,6 +610,18 @@ the reconstructed options behavior (fixed options):
 | L5 duplicate loops | live test (Chrome console semantics) | no | reproduced: a loop of an earlier paste kept running after [d] |
 | L6 keys in fields and with Ctrl/Alt/Meta | live test | fields: the website has input fields in its options (the script reads the custom mine count from one); modifier keys are the browser's | modifier part independent of the page |
 
+**Website behavior used by the fixes** (from the website's game code):
+- A new game reuses the squares and sets every one to "square blank" (it rebuilds the board only when the size
+  changes), so all new boards of one size look alike to a board-state check.
+- The mine counter shows the bomb count minus the flags, at most 999, and "-" with two digits below 0; the counter is
+  the running game's count, the options form is not.
+- A right click cycles blank, flag and, with the "marks" option, question mark; a question-marked square is revealed
+  by a left click like a blank one.
+- The game can restore a saved game on reload (flags, revealed and marked squares).
+
+**Not covered by the live tests**: pasting again in Firefox (the tests use Chrome's console semantics, which allow
+redeclaring `let` variables; Firefox's console may refuse a second paste of the same script).
+
 **Fixes** (all in `sweeper.js`):
 - L1: starting the auto sweeper resets its last result and starts a new game if the current one is already over; a
   loss on a non-guess move of the auto sweeper stops it with a warning (instead of throwing forever).
