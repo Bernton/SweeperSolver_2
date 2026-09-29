@@ -60,9 +60,9 @@ usability, and the owner's rules (one copy/pastable script, no magic numbers).
 |---|---|---|---|---|---|---|---|
 | 1 | L1 | **Fixed**: [s] throws forever after a loss the auto sweeper did not cause | high | high | S | 3.0 | WU, CH |
 | 1 | L2 | **Fixed**: [w] does nothing on fresh boards after the first game; repeated [e] prints nothing | high | high | S | 3.0 | WU |
-| 3 | B1 | Hung game makes expected win NaN; timeout per task, not per game | med-high | high | S | 2.5 | BM, CH |
+| 3 | B1 | **Fixed**: hung game makes expected win NaN; timeout per task, not per game | med-high | high | S | 2.5 | BM, CH |
 | 3 | B2 | Seed discipline: seed ledger (started) and a fixed adoption rule | med-high | high | S | 2.5 | BM |
-| 3 | B3 | Ablation blind spot: board-specific values hide the general ones | med-high | high | S | 2.5 | BM |
+| 3 | B3 | **Fixed**: ablation blind spot: board-specific values hide the general ones | med-high | high | S | 2.5 | BM |
 | 3 | S1-S4 | Four decision-preserving speed-ups (0.70x expert, 0.63x 99x99) | med-high | high | S | 2.5 | PF |
 | 7 | W1 | Tie-breaking and scoring all tied cells (+0.24 ± 0.07 on fresh seeds) | high | medium | S | 2.4 | SA |
 | 8 | L3 | **Fixed**: inconsistent positions (wrong flags, wrong count): deaths on "certain" moves, crash | high | high | S-M | 2.0 | SC, WU |
@@ -71,25 +71,25 @@ usability, and the owner's rules (one copy/pastable script, no magic numbers).
 | 8 | C2 | Remaining magic numbers (owner rule) | medium | high | S | 2.0 | CH |
 | 12 | L4 | Bomb count from the options form instead of the running game (only seen on the test page: check on the website first) | medium | medium | S | 1.6 | WU, SC |
 | 13 | L6 | **Fixed**: keybinds fire in page inputs, with Ctrl/Meta/Alt and on key repeat | low-med | high | S | 1.5 | WU, CH |
-| 13 | L8 | Stats: time is solver time only, "Highest [3] time" misses guesses, empty [i], wrong `median` | low-med | high | S | 1.5 | WU, CH |
+| 13 | L8 | **Fixed**: stats: time is solver time only, "Highest [3] time" misses guesses, empty [i], wrong `median` | low-med | high | S | 1.5 | WU, CH |
 | 13 | L13 | Console: only 3 of the tied cells evaluated, repeated numbers, noise lines | low-med | high | S | 1.5 | WU |
-| 13 | B7 | `verify-forced` does not check `getForcedWinChance`; expected win "n/a" on overfull boards | low-med | high | S | 1.5 | BM, CH |
+| 13 | B7 | **Fixed**: `verify-forced` does not check `getForcedWinChance`; expected win "n/a" on overfull boards | low-med | high | S | 1.5 | BM, CH |
 | 13 | C1 | Dead code and stray parameters | low-med | high | S | 1.5 | CH |
-| 13 | C3 | Config traps (`endgameSearchBudget: null` turns the search off, candidates 1 = 0, missing evaluation) | low-med | high | S | 1.5 | CH, SC |
+| 13 | C3 | **Fixed**: config traps (`endgameSearchBudget: null` turns the search off, candidates 1 = 0, missing evaluation) | low-med | high | S | 1.5 | CH, SC |
 | 13 | C6 | States and solver codes compared as strings | low-med | high | S | 1.5 | CH |
-| 13 | C9 | Outdated verifier comments; `verify-forced` cannot fail on "below optimal" | low-med | high | S | 1.5 | CH |
+| 13 | C9 | **Fixed**: outdated verifier comments; `verify-forced` cannot fail on "below optimal" | low-med | high | S | 1.5 | CH |
 | 21 | L7 | Auto sweeper pacing: 7x more games per second possible | medium | high | S-M | 1.3 | WU, OR |
 | 21 | B4 | Automated periodic full re-evaluation, "on its own" mode | medium | high | S-M | 1.3 | BM |
-| 21 | B5 | Load-dependent timing: gate by CPU time or single thread, interleave variants | medium | high | S-M | 1.3 | BM, PF, SC |
+| 21 | B5 | Load-dependent timing: interleave variants (the gate part is fixed: slow games are replayed alone) | medium | high | S-M | 1.3 | BM, PF, SC |
 | 21 | C5 | Benchmark setup and game loop copied in four places | medium | high | S-M | 1.3 | CH |
 | 25 | L9 | 99x99 live: cache the square elements | low | high | S | 1.0 | WU |
-| 25 | L10 | Riddle finder mode stops at every [3] step and prints the answer | low | high | S | 1.0 | WU |
-| 25 | L12 | Question marks need a second key press | low | high | S | 1.0 | WU |
+| 25 | L10 | **Fixed**: riddle finder mode prints the answer (it still stops at every [3] step, as intended) | low | high | S | 1.0 | WU |
+| 25 | L12 | **Fixed**: question marks need a second key press | low | high | S | 1.0 | WU |
 | 25 | B6 | Sizes suite too small for 1-3 point regressions on large boards | medium | high | M | 1.0 | BM |
 | 25 | B8 | One check command, per-game JSON output, sequential testing | medium | high | M | 1.0 | BM, CH |
-| 25 | B9 | `--seed 0` unseeded; exact test when few games differ | low | high | S | 1.0 | BM |
-| 25 | B11 | Command-line arguments not validated | low | high | S | 1.0 | CH |
-| 25 | C7 | Remaining documentation fixes (README options, sample output, settings list, entry 15 note) | low | high | S | 1.0 | CH, BM |
+| 25 | B9 | Exact test when few games differ (`--seed 0` is fixed: rejected) | low | high | S | 1.0 | BM |
+| 25 | B11 | **Fixed**: command-line arguments not validated | low | high | S | 1.0 | CH |
+| 25 | C7 | **Fixed**: remaining documentation fixes (README options, sample output, settings list, entry 15 note) | low | high | S | 1.0 | CH, BM |
 | 25 | C10 | Naming typos, swapped offset names, implicit globals, positional booleans | low | high | S | 1.0 | CH |
 | 34 | S5 | Benchmark forced check costs 8-9% of trial time | low-med | medium | S-M | 0.8 | PF |
 | 34 | S8 | Minor speed leftovers (settings copy per call, border cells built twice, closures) | low | medium | S | 0.8 | PF |
@@ -109,7 +109,8 @@ usability, and the owner's rules (one copy/pastable script, no magic numbers).
 | - | C8 | Legacy browser virtual mode and `Math.seedrandom` in the pasted script | owner decision | | | | CH |
 
 **Execution order** (the ranking, adjusted for dependencies): (1) L1, L2, L3, L5, L4, L6: live-use bugs in one pass
-(done except L4, which waits for a check on the website);
+(done except L4, which waits for a check on the website); the bug fixes of entry 21 (B1, B3, B7, B9, B11, C3, C7, C9,
+L8, L10, L12) are done as well;
 (2) B1, B2, B3, B12: benchmark integrity, B12 before the speed-ups; (3) S1-S4; (4) W1 under the B2 rule; (5) the
 priority 1.5 group (C2, C3, C1, C6, C9, B7, L8, L13); (6) L7, B4, B5, C5; then the rest by rank. C4 goes with the
 first change that needs it (S7, W3).
@@ -144,14 +145,15 @@ first change that needs it (S7, W3).
   Ctrl/Meta/Alt (Ctrl+S starts the auto sweeper). Fix: ignore input targets and modified keys.
 - **L7** (medium, verified) Auto sweeper pacing: about 80% of its time is waiting for browser timers; about 2.8 expert
   games per second where about 19 would be possible (7x). Run steps time-boxed per timer tick.
-- **L8** (low-medium, verified) Stats: [i] "time" measures only the solver (10x less than real time), "Highest [3]
+- **L8** **Fixed** (entry 21; no games per second, the average game time gives it). (low-medium, verified) Stats: [i] "time" measures only the solver (10x less than real time), "Highest [3]
   time" leaves out the guess steps, [i] prints nothing before the first finished game, no games per second, no ± on
   the win rate; `median` is wrong and unused.
 - **L9** (low-medium, verified) 99x99 live: reading the board costs more than solving (about 5.6 ms per step for
   `getElementById` on every cell). Cache the square elements per board.
-- **L10** (low, verified) Riddle finder mode stops at every [3] step (1.7 per expert game) and prints the answer at once;
+- **L10** **Fixed** (entry 21: the answer is no longer printed; stopping at every [3] step is the mode's definition).
+  (low, verified) Riddle finder mode stops at every [3] step (1.7 per expert game) and prints the answer at once;
   the README promises "difficult problems for you to solve".
-- **L12** (low, verified) Question marks (the website's "marks" option): the website cycles flag, question mark and
+- **L12** **Fixed** (entry 21). (low, verified) Question marks (the website's "marks" option): the website cycles flag, question mark and
   blank, so the first [e] turns a "?" into blank and only the second [e] flags; it works but looks like a no-op.
 - **L13** (low-medium, verified) Console output: when more than 3 cells tie at the lowest bomb probability, only the
   first 3 get an evaluation and the *Evaluation:* line reads as if those were all; evaluated lines repeat one number
@@ -187,31 +189,33 @@ first change that needs it (S7, W3).
 
 ### B: Benchmark and methodology
 
-- **B1** (medium-high, verified) The timeout result has no `forcedWinChance`, so a hung game turns expected win and its
+- **B1** **Fixed** (entry 21). (medium-high, verified) The timeout result has no `forcedWinChance`, so a hung game turns expected win and its
   deltas into NaN; the timeout is per task (up to 104 expert games, about 104 minutes), not per game, and overwrites
   finished games.
 - **B2** (medium-high) Seed discipline: held-out blocks were reused across decisions and the offset decision added games
   until it was significant. Keep a seed ledger in RESULTS.md and a fixed adoption rule: at least 2σ better in expected
   win on the tuning seeds 1-10000, then at least 2σ on a new, unused seed block, decided in one look.
-- **B3** (medium-high, verified) Ablation blind spot: `--ablate-key firstClickCornerOffset` changes nothing on expert,
+- **B3** **Fixed** (entry 21). (medium-high, verified) Ablation blind spot: `--ablate-key firstClickCornerOffset` changes nothing on expert,
   because `boardSettings` overrides it; ablations must also override board-specific values.
 - **B4** (medium) The periodic full re-evaluation is not automated: the last full ablation predates the endgame search.
   Add it to the check routine on a new seed block, and an "on its own" mode (feature added to the baseline).
-- **B5** (medium) Timing is load-dependent (ms/game and the slowest step vary up to about 3x with threads and load), so
+- **B5** (medium; the gate part is fixed, entry 21: games with a slow step are replayed alone) Timing is load-dependent (ms/game and the slowest step vary up to about 3x with threads and load), so
   the 2 s gate can fail spuriously and speed comparisons within a run are unreliable. Interleave variants, measure the
   gate single-threaded or by CPU time, report deterministic work counters next to times.
 - **B6** (medium) The sizes suite is too small to detect 1-3 point regressions on large boards (99x99: 40 games).
-- **B7** (low-medium) `verify-forced` never checks the benchmark's own `getForcedWinChance`; add the cross-check (the
+- **B7** **Fixed** (entry 21). (low-medium) `verify-forced` never checks the benchmark's own `getForcedWinChance`; add the cross-check (the
   review's brute force: 505 positions, 0 mismatches) and mark expected win "n/a" on overfull boards. The metric needs
   no solver optimality: in a forced position any play that never reveals a certain bomb wins with exactly 1/N.
 - **B8** (medium) One check command (the three verifiers plus a quick gate), per-game JSON output, and sequential
   testing to stop clear comparisons early.
-- **B9** (low) `--seed 0` makes game 0 unseeded; the normal approximation is weak when few games differ.
-- **B11** (low, verified) Command-line arguments are not validated (`--games abc` gives NaN games, `--set key` without
+- **B9** (low) `--seed 0` makes game 0 unseeded (fixed, entry 21: seeds below 1 are rejected); the normal approximation is
+  weak when few games differ (open).
+- **B11** **Fixed** (entry 21). (low, verified) Command-line arguments are not validated (`--games abc` gives NaN games, `--set key` without
   `=` throws a cryptic JSON error).
 - **B12** (medium) "Games played differently" compares only won, guesses and steps; decision-preserving changes should
   be checked on every step's moves (the performance review's `check.js` does this).
-- Also in B4: with `--compare`, ablation deltas are shown against the reference, not the current version.
+- Also in B4 (fixed, entry 21): with `--compare`, ablation deltas were shown against the reference, not the current
+  version.
 - **B10** (low-medium) The website fidelity check relies on a browser harness outside the repository; keep at least a
   snapshot and hash of the website's game code.
 
@@ -236,33 +240,37 @@ first change that needs it (S7, W3).
 
 ### C: Code health and documentation
 
-- **C1** Dead code: old-IE branch and deprecated `initMouseEvent` in `simulate`, unused stats helpers, unused
+- **C1** Dead code (the unused stats helpers are removed, entry 21): old-IE branch and deprecated `initMouseEvent` in `simulate`, unused
   `borderCellNeighborAmount`, `score`, the "break" protocol of `applyToCells`, stray parameters.
 - **C2** Magic numbers left: right mouse button 2, the `conditionValue` heuristic `(clusterSize - 1) / (2 + a)` (divides
   by the reduce accumulator, looks accidental), `31 - Math.clz32(...)`, `virtualGameConfig`, `Number.MAX_VALUE`
-  sentinels, repeated percent formatting, `mismatches <= 5`, the verifier boards; the expert override is duplicated in
+  sentinels, repeated percent formatting, the verifier boards (`mismatches <= 5` is named, entry 21); the expert override is duplicated in
   `bench/features.js`.
-- **C3** Config traps: `endgameSearchBudget: null` switches the search off (unlike `guessLookaheadBudget: null`),
+- **C3** **Fixed** (entry 21). Config traps: `endgameSearchBudget: null` switches the search off (unlike `guessLookaheadBudget: null`),
   `guessLookaheadCandidates: 1` acts like 0, a guess without evaluation when the budget runs out on the first candidate.
 - **C4** Structure: `sweep()` is a 1650-line closure with shared mutable state; move pure parts (look-ahead, endgame
   input, output formatting) to top-level functions **in the same file** (the script must stay one copy/pastable file).
 - **C5** Benchmark duplication: sandbox setup and the game loop are copied in four places; share them via
   `bench/sandbox.js`.
 - **C6** States and solver codes are compared as strings (`"death"`, `solver.includes("g")`).
-- **C7** Documentation: stale numbers and backlog numbering (fixed), README bench options incomplete (`--set` needs
+- **C7** **Fixed** (entry 21). Documentation: stale numbers and backlog numbering (fixed), README bench options incomplete (`--set` needs
   JSON), README sample output lacks two lines, README lists 4 of 10 `autoSweepConfig` keys, RESULTS entry 15 still names the
   removed tool and its note sits in entry 16, "recoverable" wording for patches that were never committed (entries
   16, 18: only the description remains).
-- **C9** Verifier comments are outdated (`verify-forced` still describes the endgame search as missing and does not
+- **C9** **Fixed** (entry 21). Verifier comments are outdated (`verify-forced` still describes the endgame search as missing and does not
   fail when the solver is below optimal), and the definition of forced positions lives in three places.
 - **C10** Naming: typos (`executeInterationsOnBoard`, `bombAmout`, `occurenceCount`), `applyToNeighbors` swaps its
-  offset names, implicit globals (`sweepKeyDown`, `window["lastForSweepStep..."]`), "flags" used for bombs, three
+  offset names, implicit globals (fixed in entry 20: now explicit `window` properties), "flags" used for bombs, three
   positional booleans in `sweep(...)`.
 - **C8** Legacy in-browser virtual mode (`isVirtualMode`, `virtualBatchSize`) and `Math.seedrandom` (not on the website)
   in the pasted script; the benchmark needs only the virtual game functions (owner decision).
 
 ## Owner decisions
 
+- **Focus (2026-09-29)**: for now the other aspects before win rate (live use, benchmark, code health, documentation);
+  bugs first. Win-rate work (W) waits.
+- **L3b Wrong flags**: flags set by hand are only reported (warning, no move), no added complexity to detect wrong
+  flags that fit the digits.
 - **L11 High scores**: should the script keep automated wins out of the website's public high scores (e.g. not
   submitting while the auto sweeper runs)? Currently it answers the name prompt with "cancel".
 - **C8 Legacy browser virtual mode**: keep, document, or remove from the pasted script.

@@ -34,7 +34,7 @@ Determines a single step and outputs the certain interactions to the console, or
  Stops the auto sweeper.
 
 format log game stats **[i]**:\
-Outputs the stats for the auto sweeper to the console.
+Outputs the stats of the games played by the auto sweeper to the console: win rate (± one standard error), guesses, solver time and game time (wall clock).
 
 format log game stats with raw **[o]**:\
 Outputs the stats for the auto sweeper to the console with raw data included.
@@ -54,14 +54,17 @@ Cells are named *(row_column)*, like the ids of the squares on the website, and 
 When no certain move is left, **[e]** / **[shift+e]** show:
 
 ```
+[3s] Check combinatorially - stuck
+-> [3s] Candidate amount: 21
 -> [3s] No certain cell found
--> [3s] Suggested guess: (12_6) bomb probability 6.02%, survive it and next move 90.47%, evaluation 90.47% <div id="12_6">
+-> [3s] Suggested guess: (3_7) bomb probability 8.41%, survive it and next move 91.59%, evaluation 91.59% <div id="3_7">
 -> [3s] Evaluation: chance to survive the guess and the next move, for the 3 cells with the lowest bomb probability (higher is better)
 -> [3s] Candidates by bomb probability:
--> [3s] #1 (12_5) bomb probability 5.81%, survive it and next move 89.15%, evaluation 89.15% <div id="12_5">
--> [3s] #2 (12_6) bomb probability 6.02%, survive it and next move 90.47%, evaluation 90.47%  <- suggested <div id="12_6">
--> [3s] #3 (1_17) bomb probability 10.75%, survive it and next move 89.25%, evaluation 89.25% <div id="1_17">
--> [3s] #3 (4_17) bomb probability 10.75% <div id="4_17">
+-> [3s] #1 (3_7) bomb probability 8.41%, survive it and next move 91.59%, evaluation 91.59%  <- suggested <div id="3_7">
+-> [3s] #1 (6_7) bomb probability 8.41%, survive it and next move 91.59%, evaluation 91.59% <div id="6_7">
+-> [3s] #1 (9_7) bomb probability 8.41%, survive it and next move 91.59%, evaluation 91.59% <div id="9_7">
+-> [3s] #4 (2_7) bomb probability 10.58% <div id="2_7">
+-> [3s] #5 (7_7) bomb probability 18.99% <div id="7_7">
 -> [3s] ...
 ```
 
@@ -78,34 +81,39 @@ The suggestion can be a cell with a slightly higher bomb probability when it is 
 All settings for the auto sweeper can be found within the global object *autoSweepConfig*.
 
 **doLog**: Determines if the auto sweeper should output its steps to the console\
-**isRiddleFinderMode**: If enabled, the sweeper will stop on difficult problems for you to solve\
+**isRiddleFinderMode**: If enabled, the auto sweeper stops at positions where a certain move exists that only the full check [3] finds, without showing it, for you to solve\
+**isRecordingStepStats**: Keeps the result and time of every step in the stats (see **[o]**)\
 **baseIdleTime**: Specifies the time the solver waits for each step in milliseconds\
-**gameFinishedIdleTime**:	Specifies the time the solver waits after it has finished a game in milliseconds
+**gameFinishedIdleTime**:	Specifies the time the solver waits after it has finished a game in milliseconds\
+**isVirtualMode**, **virtualGameConfig**, **virtualBatchSize**: Play virtual games in the browser instead of the page's game (development; the headless benchmark below is faster)\
+**isAutoSweepEnabled**, **state**: Internal state of the auto sweeper
 
 The solver itself is configured in the global object *solverConfig*:
 
 **firstClickCornerOffset**: First click this many cells in from the top left corner (default 2, i.e. the third cell, and 3 on expert, see *boardSettings*; *null* for the center)\
-**guessLookaheadCandidates**: How many of the safest cells are compared by their chance to survive the next move too (default 3; 0 to always guess the safest cell)\
+**guessLookaheadCandidates**: How many of the safest cells are compared by their chance to survive the next move too (default 3; 0 or 1 to always guess the safest cell)\
 **guessLookaheadBudget**: Limit for this comparison in bomb combinations per guess, keeps large boards fast (default 20000; *null* for no limit)\
 **endgameSearchMaxUnknowns**: Exact search for the guess with the best chance to win when at most this many unknown cells are left (default 28, at most 30; 0 to switch it off)\
-**endgameSearchBudget**: Limit for this search in bomb configurations plus search states per guess; above it the look-ahead decides (default 20000)\
+**endgameSearchBudget**: Limit for this search in bomb configurations plus search states per guess; above it the look-ahead decides (default 20000; *null* for no limit)\
 **boardSettings**: Values that differ for specific boards, keyed by *"width x height / bombs"*, e.g. `"30x16/99": { firstClickCornerOffset: 3 }` for expert
 
 ## Headless benchmark (development):
 *bench/* plays seeded games headless in Node.js (no dependencies, no browser). It loads *sweeper.js* unchanged, so the script stays copy/pastable into the browser console. The virtual game places bombs exactly like minesweeperonline.com.
 
-`node bench/run.js [expert|sizes|stress|all] [--scale 0.1] [--compare HEAD] [--set key=value] [--ablate]`
+`node bench/run.js [expert|sizes|stress|all] [options]`
 
 - **expert**: primary tuning target, **sizes**: other standard and custom sizes (up to 99x99), **stress**: robustness on extreme sizes and densities
+- `--scale <factor>` multiplies the games of every preset (e.g. 0.1 for a quick run), `--games <n>` plays exactly n per preset, `--seed <n>` sets the first seed (default 1), `--only <text>` runs only presets whose name contains the text, `--threads <n>` sets the worker threads (default: all cores)
 - `--compare <git revision or file>` runs an older *sweeper.js* on the same boards; win differences are paired, which removes most of the noise
-- `--set` overrides a *solverConfig* value, `--ablate` re-evaluates every feature listed in *bench/features.js* against the full configuration
-- The robustness gate fails on any error, NaN or a single step slower than SLOW_STEP_TIME (2 s, in *bench/run.js*)
-- *Expected win %* counts a game that reaches a forced position (no unknown cell can give information anymore, so every play has the same chance) with that position's exact win chance instead of its coin flips: same expected value, less noise. *Forced games* is the share of games that reach one
+- `--set key=json` overrides a *solverConfig* value (e.g. `--set guessLookaheadCandidates=6`, strings in quotes); `--ablate` re-evaluates every value of every feature listed in *bench/features.js* against the current version, `--ablate-key <key>` one feature. A value set this way applies to all boards: it also replaces that key's board-specific values in *boardSettings*
+- Differences (Δ) are against the reference for the current version and against the current version for ablations; the variant list at the top names each base
+- The robustness gate fails on any error (including a game over MAX_GAME_TIME, 60 s) or a single step slower than SLOW_STEP_TIME (2 s, in *bench/run.js*). Games with a slower step are replayed alone first, so machine load does not fail the gate
+- *Expected win %* counts a game that reaches a forced position (no unknown cell can give information anymore, so every play has the same chance) with that position's exact win chance instead of its coin flips: same expected value, less noise. *Forced games* is the share of games that reach one. On boards with more bombs than cells outside the first click's 3x3 area it is *n/a*, as the website's placement is not uniform there
 
 `node bench/verify-website.js` checks that the virtual game generates the same boards as the website code.
 
 `node bench/verify-analysis.js` checks the look-ahead's analysis of hypothetical boards against brute-force enumeration.
 
-`node bench/verify-forced.js` checks that forced positions cannot be played better than the solver does (exact optimal play over all bomb configurations) and reports how far the solver is from optimal in other small endgames.
+`node bench/verify-forced.js` computes optimal play over all bomb configurations in small endgames of real games and fails if the solver plays any of them below optimal, if a forced position could be played better than 1 / number of configurations, or if the benchmark's forced check disagrees with the brute force.
 
 Evaluation results are logged in *bench/RESULTS.md*; state, findings and next steps are in *ROADMAP.md*.

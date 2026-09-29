@@ -472,7 +472,9 @@ Held-out seeds 100001-110000, expert: +0.70 ± 0.20 counted, **+0.91 ± 0.17 (5.
 
 Overfull boards (more bombs than cells outside the first click's 3x3 area): the website moves the bombs out of that area in reading order until the outside is full, so the remaining ones are the last in reading order (9x9/75, bomb frequency around the first click: top row 0%, middle row 1.8% / 16.9%, bottom row about 94%; uniform would be 37.5%). The solver assumes uniform placement, so there the look-ahead and the search (both optimal under that assumption) lose against the plain safest cell rule, which happens to try the top left cells first (85-86% vs 92.5%). Known limitation of these boards only.
 
-## 15. Early-game ceiling (bench/measure-early.js)
+## 15. Early-game ceiling (bench/measure-early.js, removed after the measurement)
+
+The tool and the guess candidates it read from the step result were removed again after this measurement (no headroom found, no code kept for it); both are in commit b22cc61.
 
 For the first early guess (more than EARLY_MIN_UNKNOWN_CELLS = 60 unknown cells) of each of 415 expert games (200 positions), the solver's choice and the next cells by bomb probability (CANDIDATE_AMOUNT = 6 in total) were played out by the current solver on the same bomb configurations, sampled uniformly from all configurations that fit the board (sampler check: sampled mine frequencies match the exact bomb probabilities within sampling error). Rollouts that reach a position decided by the exact endgame search stop there with its win chance.
 
@@ -502,10 +504,8 @@ Experiment: solverConfig.guessLookaheadOutsiders added that many cells away from
 
 Robustness gate (current version: no errors, no step over SLOW_STEP_TIME = 2000 ms): PASS
 
-1 or 2 extra cells change almost nothing; 4 and 8 are worse (-0.23 ± 0.13, -0.39 ± 0.13 expected): with more such cells in the comparison, the look-ahead's survival of the next move overrates them. Removed again (patch not kept in the code).
+1 or 2 extra cells change almost nothing; 4 and 8 are worse (-0.23 ± 0.13, -0.39 ± 0.13 expected): with more such cells in the comparison, the look-ahead's survival of the next move overrates them. Removed again; the patch was never committed, only this description remains.
 
-
-Note (entry 15): bench/measure-early.js and the guess candidates it read from the step result were removed again after the measurement (negative result, no code kept for it); both are in commit b22cc61.
 
 ## 17. First click offset 3 on expert (solverConfig.boardSettings)
 
@@ -546,7 +546,7 @@ Experiment: evaluation = (1 - bomb probability) × (expected next safety + guess
 
 Robustness gate (current version: no errors, no step over SLOW_STEP_TIME = 2000 ms): PASS
 
-Fewer guesses per game (2.45 -> 2.27) but lower win rates at every weight (up to -0.50 ± 0.20 expected): rewarding progress trades survival for cells that unlock certain moves. Code removed (recoverable from this entry's description; the patch was not committed).
+Fewer guesses per game (2.45 -> 2.27) but lower win rates at every weight (up to -0.50 ± 0.20 expected): rewarding progress trades survival for cells that unlock certain moves. Code removed; the patch was never committed, only this description remains.
 
 ## 19. Review of 2026-09-29: measurements of the six independent reviews
 
@@ -631,3 +631,45 @@ the reconstructed options behavior (fixed options):
 - Live tests (Chromium, the website's game code): all reproductions above now behave as intended; held [shift+E]
   prints once, held [w] keeps playing, held [s] runs one loop that [d] stops, Ctrl+S/Ctrl+W/Ctrl+E/Alt+W/Meta+W and
   typing "sweep" in a field do nothing, [s] on an invalid board warns once and does not start.
+
+## 21. Bug fixes: benchmark, verifiers, stats, riddle mode, question marks, config (ROADMAP)
+
+Owner direction: aspects other than win rate first, bugs first. No change to the solver's decisions.
+
+**Benchmark (`bench/run.js`)**:
+- B1: one message per game and a timeout per game (MAX_GAME_TIME, 60 s) instead of per task; a hung game counts as an
+  error with no forced win chance (no NaN), the finished games of its task are kept and the rest go back to the queue.
+  Tested with a copy of the script rigged to hang on one seed: 1 error, the other 39 of 40 games counted, expected win a
+  number.
+- B3: a value set by `--set` or an ablation applies to all boards (it also replaces that key's board-specific values);
+  keys with board-specific values run all their values. `--ablate-key firstClickCornerOffset` on expert now plays
+  differently for null, 1 and 2 and identically for 3 (the expert value), before it changed nothing.
+- B4 (part): ablation differences are against the current version, also with `--compare`; the variant list names each
+  base.
+- B5 (gate part): games of the current version with a step over SLOW_STEP_TIME are replayed alone after the run (up to
+  MAX_REPLAYED_SLOW_GAMES = 20) and the gate uses the replayed time. Tested with the rigged copy: a step slow only in
+  the run (2200 ms) replayed in 5 ms, a step slow in both still failed the gate.
+- B7: expected win "n/a" on boards with more bombs than cells outside the first click's 3x3 area
+  (FIRST_CLICK_AREA_CELLS), where the website's placement is not uniform.
+- B9, B11: arguments are checked (numbers, seeds of at least 1, `--set key=json`, missing values, unknown features) with
+  a one-line error.
+
+**Verifiers**: `verify-forced` also checks the benchmark's forced check (`getForcedWinChance`, now exported by
+`bench/sandbox.js`) against the brute force and fails if the solver is below optimal anywhere; comments updated (C9).
+600 games: 187 forced and 98 other positions, 0 disagreements, solver optimal in all. `verify-analysis` names its print
+limit (MAX_PRINTED_MISMATCHES).
+
+**Script (`sweeper.js`)**:
+- L8: [i] says when there are no finished games yet, shows the win rate with ± one standard error, labels the solver
+  time as such and adds the game time (wall clock); "Highest [3] time" includes the guess steps; the wrong, unused
+  `median` is removed.
+- L10: riddle finder mode no longer prints the answer when it stops.
+- L12: flagging a cell marked "?" (website option "marks") uses the two right clicks the website needs.
+- C3: `endgameSearchBudget: null` means no limit (it switched the search off); `guessLookaheadCandidates` 0 or 1 both
+  guess the safest cell (documented); when the look-ahead budget is exceeded before any cell is evaluated, the
+  *Evaluation:* line says so.
+
+**Checks**: `bench/run.js all --scale 0.2 --compare HEAD`: 0 games played differently in every suite, same win and
+expected win, gate passes; `verify-forced` PASS; live tests (Chromium, the website's game code) for [i], riddle mode and
+question marks as described. Documentation: README options, sample output (real output), all `autoSweepConfig` keys;
+RESULTS entries 15, 16, 18 notes corrected (C7).

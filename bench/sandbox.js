@@ -122,4 +122,4 @@ function getForcedWinChance(context, bombs) {
     return Math.exp(-context.sweep(field, bombs, false, false, true).analysis.logWeight);
 }
 
-module.exports = { createSolver, mulberry32 };
+module.exports = { createSolver, mulberry32, getForcedWinChance };
