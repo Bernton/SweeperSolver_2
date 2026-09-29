@@ -339,7 +339,7 @@ function executeInteractions(interactions, withBoardInteraction, isVirtualMode) 
     }
 
     function formatLogInteractions(interactions) {
-        console.log("Interations:");
+        console.log("Interactions:");
 
         if (interactions.length > 0) {
             interactions.forEach((action) => {
@@ -782,14 +782,22 @@ function sweep(fieldToSweep, bombAmount, withGuessing = true, doLog = true, isAn
         if (flagsLeft === 0) {
             outsideUnknowns.forEach((outsideUnknown) => revealCell(outsideUnknown));
             subMessages.push("Reveals found - no bombs left");
-        } else if (withGuessing) {
-            revealCell(outsideUnknowns[0]);
-            let percentage = ((flagsLeft / outsideUnknowns.length) * 100).toFixed(1) + "%";
-            subMessages.push("Reveal random cell (" + percentage + ")");
-            mode = "guessing";
         } else {
-            state = sweepStates.stuck;
-            mode = "stuck";
+            let cell = outsideUnknowns[0];
+            let percentage = ((flagsLeft / outsideUnknowns.length) * 100).toFixed(2) + "%";
+            let cellInfo = "(" + (cell.y + 1) + "_" + (cell.x + 1) + ") " + percentage + " bomb, same for every unknown cell";
+            let element = cell.referenceCell.div ? cell.referenceCell.div : cell.referenceCell;
+
+            if (withGuessing) {
+                revealCell(cell);
+                subMessages.push(["Reveal " + cellInfo, element]);
+                mode = "guessing";
+            } else {
+                subMessages.push("No certain cell found");
+                subMessages.push(["Suggested guess: " + cellInfo, element]);
+                state = sweepStates.stuck;
+                mode = "stuck";
+            }
         }
 
         let message = "Check isolated unknowns";
@@ -953,8 +961,9 @@ function sweep(fieldToSweep, bombAmount, withGuessing = true, doLog = true, isAn
 
         let formatSolver = "[" + solver + "]";
         log(formatSolver, message);
+        // A message is a text or an array of text and a board element (logged on one line)
         messages.forEach((c) => {
-            log("->", formatSolver, c);
+            log("->", formatSolver, ...[].concat(c));
         });
         return createCheckResult(resultState, solver);
     }
@@ -1836,8 +1845,9 @@ function sweep(fieldToSweep, bombAmount, withGuessing = true, doLog = true, isAn
             };
         }
 
-        // Of the given guesses, picks the one most likely to survive both itself and the safest next move
-        function chooseGuessByLookahead(cellProbs) {
+        // Of the given guesses, picks the one most likely to survive both itself and the safest next move.
+        // isPruned: skip cells that can not beat the best one so far (same choice, less work).
+        function chooseGuessByLookahead(cellProbs, isPruned) {
             let bestCellProb = cellProbs[0];
             let bestScore = -1;
             let budget = { combinationsLeft: solverConfig.guessLookaheadBudget ?? Infinity };
@@ -1846,7 +1856,7 @@ function sweep(fieldToSweep, bombAmount, withGuessing = true, doLog = true, isAn
                 let cellProb = cellProbs[i];
 
                 // Sorted by safety, and a score can not exceed the safety: no later cell can score better
-                if (1 - cellProb.fraction <= bestScore) {
+                if (isPruned && 1 - cellProb.fraction <= bestScore) {
                     break;
                 }
 
@@ -1948,22 +1958,30 @@ function sweep(fieldToSweep, bombAmount, withGuessing = true, doLog = true, isAn
             validateCellProbs(cellProbs);
             cellProbs = setCellProbScoresAndSort(cellProbs);
 
-            if (withGuessing && cellProbs.length > 0) {
-                let bestScoreCellProb = cellProbs[0];
+            if (cellProbs.length === 0) {
+                resultInfo.messages.push("No certain cell found");
+                return;
+            }
 
-                if (solverConfig.guessLookaheadCandidates > 1) {
-                    bestScoreCellProb = chooseGuessByLookahead(cellProbs.slice(0, solverConfig.guessLookaheadCandidates));
+            // When only suggesting, all look-ahead candidates are evaluated for the list (same choice as with pruning)
+            let guess = chooseGuess(cellProbs, withGuessing);
 
-                    if (bestScoreCellProb.lookaheadScore !== undefined) {
-                        resultInfo.messages.push("Look-ahead: survive this and next move " + (bestScoreCellProb.lookaheadScore * 100).toFixed(2) + "%");
-                    }
+            if (withGuessing) {
+                let message = "Reveal " + formatCellProb(guess);
+
+                if (guess.fraction > cellProbs[0].fraction) {
+                    message += " (safest is " + formatCellProb(cellProbs[0]) + ")";
                 }
 
-                resultInfo.messages.push("Reveal lowest score cell (" + bestScoreCellProb.percentage + ")");
-                revealCell(bestScoreCellProb.candidate);
+                resultInfo.messages.push([message, getCellElement(guess)]);
+                revealCell(guess.candidate);
             } else {
+                let lookaheadAmount = Math.min(solverConfig.guessLookaheadCandidates, cellProbs.length);
                 resultInfo.messages.push("No certain cell found");
-                resultInfo.messages.push("Candidates with percentages:");
+                resultInfo.messages.push(["Suggested guess: " + formatCellProb(guess), getCellElement(guess)]);
+                resultInfo.messages.push(
+                    "Candidates by bomb chance" + (lookaheadAmount > 1 ? " (for the " + lookaheadAmount + " safest also the chance to survive it and the next move)" : "") + ":"
+                );
 
                 let counter = 1;
                 let placing = 1;
@@ -1980,28 +1998,41 @@ function sweep(fieldToSweep, bombAmount, withGuessing = true, doLog = true, isAn
                 });
 
                 cellProbs.forEach((cellProb) => {
-                    let message = "#" + cellProb.placing + " " + formatCellProbCoords(cellProb) + ": " + cellProb.percentage + " (Score: " + (cellProb.score * 100).toFixed(3) + ")";
-
-                    if (cellProb.isOutsider) {
-                        message += " - Outsider";
-                    } else if (cellProb.candidate.clusterSize > 1) {
-                        message += " - Cluster";
-                    }
-
-                    resultInfo.messages.push(message);
-
-                    if (cellProb.candidate.referenceCell.div) {
-                        resultInfo.messages.push(cellProb.candidate.referenceCell.div);
-                    } else {
-                        resultInfo.messages.push(cellProb.candidate.referenceCell);
-                    }
+                    let message = "#" + cellProb.placing + " " + formatCellProb(cellProb) + (cellProb === guess ? "  <- suggested" : "");
+                    resultInfo.messages.push([message, getCellElement(cellProb)]);
                 });
             }
+        }
 
-            function formatCellProbCoords(cellProb) {
-                let cell = cellProb.candidate;
-                return "(" + (cell.y + 1) + "_" + (cell.x + 1) + ")";
+        function chooseGuess(cellProbs, isPruned) {
+            if (solverConfig.guessLookaheadCandidates > 1) {
+                return chooseGuessByLookahead(cellProbs.slice(0, solverConfig.guessLookaheadCandidates), isPruned);
             }
+
+            return cellProbs[0];
+        }
+
+        // (row_column) as in the ids of the website's squares
+        function formatCellProb(cellProb) {
+            let cell = cellProb.candidate;
+            let message = "(" + (cell.y + 1) + "_" + (cell.x + 1) + ") " + cellProb.percentage + " bomb";
+
+            if (cellProb.lookaheadScore !== undefined) {
+                message += ", " + (cellProb.lookaheadScore * 100).toFixed(2) + "% to survive it and the next move";
+            }
+
+            if (cellProb.isOutsider) {
+                message += " - Outsider";
+            } else if (cellProb.candidate.clusterSize > 1) {
+                message += " - Cluster";
+            }
+
+            return message;
+        }
+
+        function getCellElement(cellProb) {
+            let referenceCell = cellProb.candidate.referenceCell;
+            return referenceCell.div ? referenceCell.div : referenceCell;
         }
 
         function createCellProbsWithOutsider(candidateCellProbs, outsider) {
