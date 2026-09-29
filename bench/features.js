@@ -9,5 +9,6 @@ module.exports = [
     { key: "guessLookaheadCandidates", values: [0, 3, 6, 12] },
     { key: "guessLookaheadBudget", values: [5000, 20000, 100000] },
     { key: "endgameSearchMaxUnknowns", values: [0, 12, 16, 20, 24, 28] },
-    { key: "endgameSearchBudget", values: [20000, 100000, 500000, 2000000] }
+    { key: "endgameSearchBudget", values: [20000, 100000, 500000, 2000000] },
+    { key: "boardSettings", values: [{}, { "30x16/99": { firstClickCornerOffset: 3 } }] }
 ];

@@ -80,11 +80,12 @@ All settings for the auto sweeper can be found within the global object *autoSwe
 
 The solver itself is configured in the global object *solverConfig*:
 
-**firstClickCornerOffset**: First click this many cells in from the top left corner (default 2, i.e. the third cell; *null* for the center)\
+**firstClickCornerOffset**: First click this many cells in from the top left corner (default 2, i.e. the third cell, and 3 on expert, see *boardSettings*; *null* for the center)\
 **guessLookaheadCandidates**: How many of the safest cells are compared by their chance to survive the next move too (default 3; 0 to always guess the safest cell)\
 **guessLookaheadBudget**: Limit for this comparison in bomb combinations per guess, keeps large boards fast (default 20000; *null* for no limit)\
 **endgameSearchMaxUnknowns**: Exact search for the guess with the best chance to win when at most this many unknown cells are left (default 28, at most 30; 0 to switch it off)\
-**endgameSearchBudget**: Limit for this search in bomb configurations plus search states per guess; above it the look-ahead decides (default 20000)
+**endgameSearchBudget**: Limit for this search in bomb configurations plus search states per guess; above it the look-ahead decides (default 20000)\
+**boardSettings**: Values that differ for specific boards, keyed by *"width x height / bombs"*, e.g. `"30x16/99": { firstClickCornerOffset: 3 }` for expert
 
 ## Headless benchmark (development):
 *bench/* plays seeded games headless in Node.js (no dependencies, no browser). It loads *sweeper.js* unchanged, so the script stays copy/pastable into the browser console. The virtual game places bombs exactly like minesweeperonline.com.

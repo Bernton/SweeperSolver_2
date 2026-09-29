@@ -10,7 +10,8 @@ State, review findings and ranked backlog. Measurements and history are in [benc
 - Solver: rule stages [0] trivial and [1] suffocations, then the exact full check [3] with exact bomb probabilities.
   Guesses: of the 3 cells with the lowest bomb probability, the one most likely to survive itself and the next move
   (look-ahead, exact analysis of each value the cell can show); with up to 28 unknown cells left, the exact best guess
-  (search over all bomb configurations and strategies). First click on the third cell from the top left corner.
+  (search over all bomb configurations and strategies). First click on the fourth cell from the top left corner on expert,
+  the third on other boards (`solverConfig.boardSettings`).
 - Works on all website sizes (up to 99x99, any bomb count); robustness gate passes (no errors, no step over 2 s).
 - `sweeper.js` stays a single copy/pastable script; the console output shows bomb probability, statistics and the
   evaluation for every candidate.
@@ -54,8 +55,8 @@ Impact = expected effect on the expert win rate or on trial time; each item is e
 3. **Evaluation blend**: combine survival with the next move with progress (chance the guess gives a certain safe move)
    and look further than one move for the top candidates. Unknown gain; JSMinesweeper's main difference besides the
    endgame.
-4. **First click offset 3 vs 2**: undecided (+0.11 ± 0.33 on tuning seeds, +0.61 ± 0.32 on held-out seeds); re-run with
-   more seeds when the solver changes.
+4. Done: first click offset 3 on expert only (entry 17, via `solverConfig.boardSettings`); 2 stays the general default
+   (3 is worse on beginner and intermediate).
 5. **Overfull boards**: model the website's non-uniform placement around the first click when there are more bombs
    than cells outside that area (bench/RESULTS.md entry 14); only matters on those boards.
 6. Done: exact endgame search (entry 14). Not worth it (measured): more cells away from the digits as look-ahead

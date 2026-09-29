@@ -25,7 +25,11 @@ let solverConfig = {
     guessLookaheadCandidates: 3, // 0: guess the safest cell, n: of the n safest cells guess the one most likely to survive the next move too
     guessLookaheadBudget: 20000, // max bomb combinations the look-ahead enumerates per guess, keeps large boards fast (null: no limit)
     endgameSearchMaxUnknowns: 28, // exact search for the guess with the best win chance when at most this many unknown cells are left (0: off)
-    endgameSearchBudget: 20000 // max bomb configurations plus search states per guess; above it the look-ahead decides
+    endgameSearchBudget: 20000, // max bomb configurations plus search states per guess; above it the look-ahead decides
+    // Values that differ for specific boards ("width x height / bombs"), tuned on those boards (bench/RESULTS.md)
+    boardSettings: {
+        "30x16/99": { firstClickCornerOffset: 3 }
+    }
 };
 
 // The endgame search keeps bomb configurations as bit masks of 32 bit integers, which safely hold this many cells
@@ -667,6 +671,7 @@ let sweepDepth = 0;
 
 // isAnalysis: only analyze the position (see analyzePosition), used by the guess look-ahead
 function sweep(fieldToSweep, bombAmount, withGuessing = true, doLog = true, isAnalysis = false) {
+    let settings = getBoardSettings(fieldToSweep, bombAmount);
     let interactions = [];
     let revealedCells = new Set();
     let flaggedCells = new Set();
@@ -987,7 +992,7 @@ function sweep(fieldToSweep, bombAmount, withGuessing = true, doLog = true, isAn
         let height = field.length;
         let x = Math.floor(width / 2);
         let y = Math.floor(height / 2);
-        let offset = solverConfig.firstClickCornerOffset;
+        let offset = settings.firstClickCornerOffset;
 
         if (offset !== null) {
             x = Math.min(offset, x);
@@ -1823,7 +1828,7 @@ function sweep(fieldToSweep, bombAmount, withGuessing = true, doLog = true, isAn
         function chooseGuessByLookahead(cellProbs, isPruned) {
             let bestCellProb = cellProbs[0];
             let bestScore = -1;
-            let budget = { combinationsLeft: solverConfig.guessLookaheadBudget ?? Infinity };
+            let budget = { combinationsLeft: settings.guessLookaheadBudget ?? Infinity };
 
             for (let i = 0; i < cellProbs.length; i++) {
                 let cellProb = cellProbs[i];
@@ -1993,8 +1998,8 @@ function sweep(fieldToSweep, bombAmount, withGuessing = true, doLog = true, isAn
                 return chooseGuessByEndgame(cellProbs, endgame);
             }
 
-            if (solverConfig.guessLookaheadCandidates > 1) {
-                return chooseGuessByLookahead(cellProbs.slice(0, solverConfig.guessLookaheadCandidates), isPruned);
+            if (settings.guessLookaheadCandidates > 1) {
+                return chooseGuessByLookahead(cellProbs.slice(0, settings.guessLookaheadCandidates), isPruned);
             }
 
             cellProbs.forEach((cellProb) => (cellProb.evaluation = 1 - cellProb.fraction));
@@ -2005,7 +2010,7 @@ function sweep(fieldToSweep, bombAmount, withGuessing = true, doLog = true, isAn
         function searchEndgameOfPosition() {
             let unknownAmount = cellCounts.hidden - cellCounts.flagged;
 
-            if (unknownAmount > Math.min(solverConfig.endgameSearchMaxUnknowns, ENDGAME_MAX_MASK_BITS)) {
+            if (unknownAmount > Math.min(settings.endgameSearchMaxUnknowns, ENDGAME_MAX_MASK_BITS)) {
                 return null;
             }
 
@@ -2036,7 +2041,7 @@ function sweep(fieldToSweep, bombAmount, withGuessing = true, doLog = true, isAn
 
             let neighborMasks = unknowns.map(maskOf);
             let flaggedNeighbors = unknowns.map((cell) => cell.flaggedNeighborAmount);
-            let result = searchEndgame(unknowns.length, totalFlagsLeft, digits, digitsOfCells, neighborMasks, flaggedNeighbors, solverConfig.endgameSearchBudget);
+            let result = searchEndgame(unknowns.length, totalFlagsLeft, digits, digitsOfCells, neighborMasks, flaggedNeighbors, settings.endgameSearchBudget);
             return result ? Object.assign(result, { unknowns: unknowns }) : null;
         }
 
@@ -2081,8 +2086,8 @@ function sweep(fieldToSweep, bombAmount, withGuessing = true, doLog = true, isAn
                 return "chance to win the game with best play, exact search over all " + endgameConfigurationAmount + " bomb configurations (higher is better)";
             }
 
-            if (solverConfig.guessLookaheadCandidates > 1) {
-                let amount = Math.min(solverConfig.guessLookaheadCandidates, cellProbs.length);
+            if (settings.guessLookaheadCandidates > 1) {
+                let amount = Math.min(settings.guessLookaheadCandidates, cellProbs.length);
                 return "chance to survive the guess and the next move, for the " + amount + " cells with the lowest bomb probability (higher is better)";
             }
 
@@ -2578,6 +2583,13 @@ function bitCount(value) {
     }
 
     return count;
+}
+
+// solverConfig with the board-specific values of this board (solverConfig.boardSettings) applied
+function getBoardSettings(field, bombAmount) {
+    let width = field.length > 0 ? field[0].length : 0;
+    let boardValues = (solverConfig.boardSettings || {})[width + "x" + field.length + "/" + bombAmount];
+    return Object.assign({}, solverConfig, boardValues);
 }
 
 function logSumExp(values) {

@@ -507,3 +507,20 @@ Robustness gate (current version: no errors, no step over SLOW_STEP_TIME = 2000 
 
 Note (entry 15): bench/measure-early.js and the guess candidates it read from the step result were removed again after the measurement (negative result, no code kept for it); both are in commit b22cc61.
 
+## 17. First click offset 3 on expert (solverConfig.boardSettings)
+
+Offset 3 vs 2 on expert, current solver, fresh seeds: 200001-220000: +0.30 ± 0.20 expected (+0.13 ± 0.23 counted); 300001-340000: +0.39 ± 0.14 expected (+0.36 ± 0.16 counted). Combined **+0.36 ± 0.11 expected (3.1σ)** on 60000 games (earlier: +0.11 ± 0.33 and +0.61 ± 0.32 counted, older solvers).
+
+Other sizes, offset 3 vs 2 (expected win, seeds 1-... and 100001-...):
+
+| Preset | seeds from 1 | seeds from 100001 |
+|---|---|---|
+| beginner 9x9/10 | -0.32 ± 0.16 | -0.19 ± 0.16 |
+| intermediate 16x16/40 | -0.65 ± 0.23 | -0.46 ± 0.24 |
+| wide 60x16/198 | +0.33 ± 0.74 | -0.33 ± 0.68 |
+| square 24x24/115 | -0.89 ± 0.55 | -0.10 ± 0.58 |
+| big 50x50/500 | -0.47 ± 0.90 | +0.02 ± 0.78 |
+| max 99x99/1960 | +0.36 ± 0.41 | -1.25 ± 1.25 |
+
+Offset 3 is an expert-specific gain (worse on beginner and intermediate), so it is set for expert only: solverConfig.boardSettings holds values per board ("width x height / bombs"), and the solver reads all settings through them (getBoardSettings). Only expert games change (all other presets play identically). Ablation: feature boardSettings in bench/features.js.
+
