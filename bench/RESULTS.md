@@ -472,3 +472,13 @@ Held-out seeds 100001-110000, expert: +0.70 ± 0.20 counted, **+0.91 ± 0.17 (5.
 
 Overfull boards (more bombs than cells outside the first click's 3x3 area): the website moves the bombs out of that area in reading order until the outside is full, so the remaining ones are the last in reading order (9x9/75, bomb frequency around the first click: top row 0%, middle row 1.8% / 16.9%, bottom row about 94%; uniform would be 37.5%). The solver assumes uniform placement, so there the look-ahead and the search (both optimal under that assumption) lose against the plain safest cell rule, which happens to try the top left cells first (85-86% vs 92.5%). Known limitation of these boards only.
 
+## 15. Early-game ceiling (bench/measure-early.js)
+
+For the first early guess (more than EARLY_MIN_UNKNOWN_CELLS = 60 unknown cells) of each of 415 expert games (200 positions), the solver's choice and the next cells by bomb probability (CANDIDATE_AMOUNT = 6 in total) were played out by the current solver on the same bomb configurations, sampled uniformly from all configurations that fit the board (sampler check: sampled mine frequencies match the exact bomb probabilities within sampling error). Rollouts that reach a position decided by the exact endgame search stop there with its win chance.
+
+- Win chance after the solver's choice: 44.8%.
+- Choosing the best of the 6 candidates on SELECTION_SAMPLES = 150 samples each and checking it on 300 fresh ones: **-0.41 ± 0.13 per position (-3.2σ)**. The differences between the candidates are smaller than the rollout noise (about ±4 points per candidate), so the selected candidate is mostly a lucky one (bomb probability 13.5% vs 10.6%).
+- Fixed rules (unbiased, they do not look at the samples), instead of the solver's choice: lowest bomb probability -0.15 ± 0.07; candidate 2 by bomb probability -1.00 ± 0.19; 3: -1.52 ± 0.21; 4: -2.09 ± 0.24; 5: -3.04 ± 0.31; 6: -3.99 ± 0.34.
+
+Conclusion: among the cells with the lowest bomb probability, the solver's early choice is the best measurable one; no headroom found there. Early losses are mostly inherent risk (about 10% bomb probability per early guess). Not covered: cells outside the candidate list (only one cell away from the digits is considered) and strategies deeper than one move.
+

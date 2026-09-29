@@ -671,6 +671,7 @@ function sweep(fieldToSweep, bombAmount, withGuessing = true, doLog = true, isAn
     let revealedCells = new Set();
     let flaggedCells = new Set();
     let cellCounts = { cells: 0, hidden: 0, flagged: 0, revealedBombs: 0 };
+    let guessCandidates = null; // candidates of a guess with their statistics, for analysis tools (bench/)
     let depth = sweepDepth;
     let checkResult;
 
@@ -686,7 +687,8 @@ function sweep(fieldToSweep, bombAmount, withGuessing = true, doLog = true, isAn
         interactions: interactions,
         state: checkResult.state,
         solver: checkResult.solver,
-        analysis: checkResult.analysis
+        analysis: checkResult.analysis,
+        guessCandidates: guessCandidates
     };
 
     return sweepResult;
@@ -1939,6 +1941,14 @@ function sweep(fieldToSweep, bombAmount, withGuessing = true, doLog = true, isAn
 
             // When only suggesting, all look-ahead candidates are evaluated for the list (same choice as with pruning)
             let guess = chooseGuess(cellProbs, withGuessing);
+            guessCandidates = cellProbs.map((cellProb) => ({
+                x: cellProb.candidate.x,
+                y: cellProb.candidate.y,
+                bombProbability: cellProb.fraction,
+                evaluation: cellProb.evaluation,
+                winChance: cellProb.winChance,
+                isGuess: cellProb === guess
+            }));
 
             if (withGuessing) {
                 let message = "Reveal " + formatCellProb(guess);

@@ -37,26 +37,27 @@ About 35% of all losses are forced (almost all 50/50s). The avoidable losses, by
 | 16 or fewer (endgame) | 6.6% | 30.3% |
 
 The exact endgame search (done, entry 14) made the solver optimal in all checked endgames and gained about 0.9 points.
-The early game is now clearly the largest avoidable pool, but its ceiling is not measured yet.
+The early game is the largest pool of losses, but rollouts found no better choice among the cells with the lowest bomb
+probability (entry 15): the solver's early choice beats every fixed alternative, early losses are mostly inherent risk.
 
 ## Ranked backlog
 
 Impact = expected effect on the expert win rate or on trial time; each item is evaluated with the benchmark
 (paired, ablation) and confirmed on held-out seeds before it is adopted.
 
-### Next: measure the early-game ceiling (win rate)
+### Next: more candidate cells away from the digits (win rate)
 
-The largest avoidable pool: guesses with more than 60 unknown cells lose 16.9% of games (average bomb probability
-10.5%). Before building anything, measure what better early guesses could gain, e.g. a deeper look-ahead (two or more
-moves, more candidates) on sampled early positions, compared by the benchmark's expected win.
+Only one cell away from the digits (the one most likely to open an area) is considered as a guess; 6.8% of guesses are
+such cells, and rollouts (entry 15) only covered the candidate list. Add the best few of them (by chance of an opening
+and bomb probability) to the look-ahead candidates, measure with the benchmark, confirm on held-out seeds.
 
 ### Win rate
 
-2. **Evaluation blend**: combine survival with the next move with progress (chance the guess gives a certain safe move)
+2. Done: early-game ceiling measurement (entry 15, `bench/measure-early.js`): no headroom found among the cells with
+   the lowest bomb probability.
+3. **Evaluation blend**: combine survival with the next move with progress (chance the guess gives a certain safe move)
    and look further than one move for the top candidates. Unknown gain; JSMinesweeper's main difference besides the
    endgame.
-3. **More outside cells in the look-ahead**: only one cell away from the digits (the most likely opening) is considered
-   now; 6.8% of guesses are such cells.
 4. **First click offset 3 vs 2**: undecided (+0.11 ± 0.33 on tuning seeds, +0.61 ± 0.32 on held-out seeds); re-run with
    more seeds when the solver changes.
 5. **Overfull boards**: model the website's non-uniform placement around the first click when there are more bombs

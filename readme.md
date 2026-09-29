@@ -103,4 +103,6 @@ The solver itself is configured in the global object *solverConfig*:
 
 `node bench/verify-forced.js` checks that forced positions cannot be played better than the solver does (exact optimal play over all bomb configurations) and reports how far the solver is from optimal in other small endgames.
 
+`node bench/measure-early.js` (research) plays early guess candidates out against sampled bomb configurations to see whether better early guesses exist.
+
 Evaluation results are logged in *bench/RESULTS.md*; state, findings and next steps are in *ROADMAP.md*.
