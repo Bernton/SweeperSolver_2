@@ -17,7 +17,7 @@ State, review findings and the prioritized plan. Measurements and history are in
   expert, the third on other boards (`solverConfig.boardSettings`).
 - Works on all website sizes (up to 99x99, any bomb count); robustness gate passes. Boards that no bomb configuration
   fits (e.g. a wrong flag set by hand) are reported and no move is made (L3); wrong flags that still fit the digits
-  are not detected (L3b).
+  are trusted, and the auto sweeper stops with a warning when it loses on a certain move (L3b, not planned).
 - `sweeper.js` stays a single copy/pastable script; the console output shows bomb probability, statistics and the
   evaluation for every candidate.
 - Benchmark: headless, website-exact boards (verified), paired comparisons, feature ablation, expected win. 10,000 expert
@@ -65,7 +65,7 @@ usability, and the owner's rules (one copy/pastable script, no magic numbers).
 | 3 | B3 | Ablation blind spot: board-specific values hide the general ones | med-high | high | S | 2.5 | BM |
 | 3 | S1-S4 | Four decision-preserving speed-ups (0.70x expert, 0.63x 99x99) | med-high | high | S | 2.5 | PF |
 | 7 | W1 | Tie-breaking and scoring all tied cells (+0.24 ± 0.07 on fresh seeds) | high | medium | S | 2.4 | SA |
-| 8 | L3 | **Fixed** (see L3b): inconsistent positions (wrong flags, wrong count): deaths on "certain" moves, crash | high | high | S-M | 2.0 | SC, WU |
+| 8 | L3 | **Fixed**: inconsistent positions (wrong flags, wrong count): deaths on "certain" moves, crash | high | high | S-M | 2.0 | SC, WU |
 | 8 | L5 | **Fixed**: duplicate auto-sweep loops after pasting again or repeated [s] | medium | high | S | 2.0 | WU |
 | 8 | B12 | Strict identity check (every step's moves) for decision-preserving changes | medium | high | S | 2.0 | PF |
 | 8 | C2 | Remaining magic numbers (owner rule) | medium | high | S | 2.0 | CH |
@@ -91,7 +91,6 @@ usability, and the owner's rules (one copy/pastable script, no magic numbers).
 | 25 | B11 | Command-line arguments not validated | low | high | S | 1.0 | CH |
 | 25 | C7 | Remaining documentation fixes (README options, sample output, settings list, entry 15 note) | low | high | S | 1.0 | CH, BM |
 | 25 | C10 | Naming typos, swapped offset names, implicit globals, positional booleans | low | high | S | 1.0 | CH |
-| 34 | L3b | Wrong flags that still fit the digits are trusted (152 of 300 games with one wrong flag die) | medium | medium | M | 0.8 | OR |
 | 34 | S5 | Benchmark forced check costs 8-9% of trial time | low-med | medium | S-M | 0.8 | PF |
 | 34 | S8 | Minor speed leftovers (settings copy per call, border cells built twice, closures) | low | medium | S | 0.8 | PF |
 | 36 | W2 | Paired JSMinesweeper harness to explain the remaining ~0.6 point gap | high | low | M | 0.75 | SA |
@@ -110,7 +109,7 @@ usability, and the owner's rules (one copy/pastable script, no magic numbers).
 | - | C8 | Legacy browser virtual mode and `Math.seedrandom` in the pasted script | owner decision | | | | CH |
 
 **Execution order** (the ranking, adjusted for dependencies): (1) L1, L2, L3, L5, L4, L6: live-use bugs in one pass
-(done except L4, which waits for a check on the website, and L3b, see findings);
+(done except L4, which waits for a check on the website);
 (2) B1, B2, B3, B12: benchmark integrity, B12 before the speed-ups; (3) S1-S4; (4) W1 under the B2 rule; (5) the
 priority 1.5 group (C2, C3, C1, C6, C9, B7, L8, L13); (6) L7, B4, B5, C5; then the rest by rank. C4 goes with the
 first change that needs it (S7, W3).
@@ -124,15 +123,15 @@ first change that needs it (S7, W3).
   never resets it. Fix: warn instead of throwing in live mode, reset the state when the auto sweeper starts.
 - **L2** **Fixed** (entry 20). (high, verified) The board-state cache of `sweepStep` makes [w] do nothing on every fresh board after the first
   game (all fresh boards look alike) and makes a repeated [e]/[shift+E] print nothing. Fix: only suppress key repeats.
-- **L3** **Fixed** (entry 20), except L3b. (medium, verified) Inconsistent positions (a wrong user flag, too many flags, a wrong bomb count) lead to deaths
+- **L3** **Fixed** (entry 20). (medium, verified) Inconsistent positions (a wrong user flag, too many flags, a wrong bomb count) lead to deaths
   on "certain" moves (180 of 300 test games with one wrong flag), reveal-all behavior and a crash in
   `onIsolatedUnknowns`. Fix: detect "no valid combination", negative bombs left, bombs left without unknown cells; warn
   and make no move.
-- **L3b** (medium, verified headless) A wrong flag that still fits the digits cannot be detected while the solver trusts
+- **L3b** (**not planned**, owner decision: wrong flags set by hand only need to be reported, without added
+  complexity) A wrong flag that still fits the digits cannot be detected while the solver trusts
   flags: with one wrong flag, 152 of 300 expert games still die on a non-guess move (the auto sweeper now stops with
   a warning instead of throwing). Possible fix: treat flags the solver did not set itself as unknown cells (the
-  solver re-derives correct flags; one it finds safe is unflagged, then revealed). Changes live play only; check
-  that the benchmark plays identically.
+  solver re-derives correct flags; one it finds safe is unflagged, then revealed).
 - **L4** (medium, **only seen on the test page, not yet confirmed on the website**) The bomb count is read from the
   options form, not from the running game: changing options before a new game gives wrong probabilities and wrong
   certain moves. The test page's options form and its link to the next game are a guess (the website's page code is

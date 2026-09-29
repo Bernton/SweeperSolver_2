@@ -627,7 +627,7 @@ the reconstructed options behavior (fixed options):
 - `bench/run.js all --scale 0.2 --compare HEAD`: 0 games played differently in every suite, 0 errors (consistent
   positions never reach the new checks).
 - Headless, one wrong flag next to a digit after step 5 (300 expert games): 32 detected as invalid, 0 crashes, 152
-  still die on a non-guess move (wrong flags that fit the digits: ROADMAP L3b), 57 won.
+  still die on a non-guess move (wrong flags that fit the digits are trusted; the auto sweeper stops with a warning; ROADMAP L3b, not planned), 57 won.
 - Live tests (Chromium, the website's game code): all reproductions above now behave as intended; held [shift+E]
   prints once, held [w] keeps playing, held [s] runs one loop that [d] stops, Ctrl+S/Ctrl+W/Ctrl+E/Alt+W/Meta+W and
   typing "sweep" in a field do nothing, [s] on an invalid board warns once and does not start.
