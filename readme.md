@@ -3,7 +3,7 @@ Designed to work on: [http://minesweeperonline.com/](http://minesweeperonline.co
 
 For use beyond keybinds minimal technical skill in javascript is needed.
 
-Finds all certain results and if a guess has to be made, it calculates the probability of candidates being bombs and picks the guess most likely to survive both itself and the next move. Reaches a win rating of about 53.5% on expert with an average of roughly 2.5 guesses per game (10,000 seeded games in the headless benchmark, see below). Works on all board sizes the website offers (up to 99x99).
+Finds all certain results and if a guess has to be made, it calculates the probability of candidates being bombs and picks the guess most likely to survive both itself and the next move. Reaches a win rating of about 53% on expert with an average of roughly 2.5 guesses per game (10,000 seeded games in the headless benchmark: 53.5% on the seeds used for tuning, 52.4% on held-out seeds). Works on all board sizes the website offers (up to 99x99).
 
 ## How to setup:
 
@@ -97,4 +97,4 @@ The solver itself is configured in the global object *solverConfig*:
 
 `node bench/verify-analysis.js` checks the look-ahead's analysis of hypothetical boards against brute-force enumeration.
 
-Evaluation results are logged in *bench/RESULTS.md*.
+Evaluation results are logged in *bench/RESULTS.md*; state, findings and next steps are in *ROADMAP.md*.

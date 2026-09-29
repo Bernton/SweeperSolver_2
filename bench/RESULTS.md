@@ -337,3 +337,42 @@ Tried and dropped:
 - Caching small binomial coefficients: slower than computing them.
 - Returning trivial flags and reveals in one step: 9% fewer steps, no measurable time gain.
 
+## 12. Review: loss analysis and held-out confirmation
+
+Where expert games are lost (5000 games, current solver):
+
+- By bomb probability of the fatal guess: 0-10%: 13.4%, 10-20%: 28.7%, 20-30%: 10.3%, 30-40%: 7.8%, 40-49%: 0.3%, 49-51%: 39.2%, above: 0.3%
+- By guess number: 1st: 32.4%, 2nd: 21.7%, 3rd: 15.3%, 4th: 11.3%, 5th or later: 19.3%
+- By unknown cells left: 8 or fewer: 42.2%, 9-16: 8.3%, 17-30: 8.4%, 31-60: 6.0%, more: 35.1%
+- Expected deaths (sum of guess bomb probabilities): 2364 (actual 2314); from 45-55% guesses: 940; from guesses with 16 or fewer unknowns: 1220
+- 25.6% of guesses have more than 3 cells tied at the lowest bomb probability (more look-ahead candidates did not help, entry 10); 6.8% of guesses are outsiders; the first guess after the opening has 17.7% bomb probability on average
+
+All features re-evaluated on held-out seeds 100001-110000 (tuning used seeds 1-10000):
+
+- Variant 0: current
+- Variant 1: current with firstClickCornerOffset=null
+- Variant 2: current with firstClickCornerOffset=1
+- Variant 3: current with firstClickCornerOffset=3
+- Variant 4: current with guessLookaheadCandidates=0
+- Variant 5: current with guessLookaheadCandidates=6
+- Variant 6: current with guessLookaheadCandidates=12
+- Variant 7: current with guessLookaheadBudget=5000
+- Variant 8: current with guessLookaheadBudget=100000
+
+| Preset | Variant | Win % | Δ win vs variant 0 (paired) | Games played differently | Guesses/game | ms/game | Slowest step ms | Errors |
+|---|---|---|---|---|---|---|---|---|
+| expert 30x16/99 | 0 | 52.44 ± 0.50 |  |  | 2.56 | 11.8 | 399 | 0 |
+|  | 1 | 51.27 ± 0.50 | -1.17 ± 0.42 (-2.8σ) | 9906 | 2.52 | 14.2 | 336 | 0 |
+|  | 2 | 50.34 ± 0.50 | -2.10 ± 0.32 (-6.7σ) | 8585 | 2.72 | 12.3 | 404 | 0 |
+|  | 3 | 53.05 ± 0.50 | +0.61 ± 0.32 (1.9σ) | 8680 | 2.49 | 11.3 | 405 | 0 |
+|  | 4 | 51.20 ± 0.50 | -1.24 ± 0.27 (-4.7σ) | 3832 | 2.67 | 4.6 | 22 | 0 |
+|  | 5 | 52.54 ± 0.50 | +0.10 ± 0.15 (0.7σ) | 1156 | 2.53 | 17.5 | 785 | 0 |
+|  | 6 | 52.59 ± 0.50 | +0.15 ± 0.15 (1.0σ) | 1225 | 2.52 | 15.2 | 795 | 0 |
+|  | 7 | 52.44 ± 0.50 | +0.00 ± 0.00 (0.0σ) | 1 | 2.56 | 11.1 | 270 | 0 |
+|  | 8 | 52.43 ± 0.50 | -0.01 ± 0.01 (-1.0σ) | 2 | 2.56 | 12.5 | 970 | 0 |
+
+Robustness gate (current version: no errors, no step over 2000 ms): PASS
+
+Look-ahead (+1.24, 4.7σ) and first click offset 2 vs center (+1.17, 2.8σ) confirmed. Offset 3 vs 2 undecided (+0.11 ± 0.33 on tuning seeds, +0.61 ± 0.32 here).
+Absolute expert win rate on held-out seeds 52.44% vs 53.52% on the tuning seeds: report about 53%.
+
