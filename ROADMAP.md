@@ -44,20 +44,73 @@ Six independent reviews (solver correctness, website use, benchmark methodology,
 the art) plus an own review; details and measurements in bench/RESULTS.md entry 19. Findings are listed below with IDs:
 **L** live use, **W** win rate, **B** benchmark and methodology, **S** speed, **C** code health and documentation.
 
-## Plan: what to do first
+## Ranking of all findings
 
-Ordered by value for the repository goal (win rate on the website, Expert first, all sizes, one copy/pastable script),
-with small, verified items first:
+All findings of the six reviews and the own review, collected in two passes (the second pass added L12, L13, B11,
+B12, C9, C10, S8, W7-W9). Reviews: **SC** solver correctness, **WU** website use, **BM** benchmark methodology,
+**PF** performance, **CH** code health, **SA** state of the art, **OR** own review.
 
-1. **Live-use bugs (L1-L6)**: they cost real games or stop the script on the website today, and each fix is small.
-2. **Benchmark integrity (B1-B4)**: fix before the next win rate decision, because the remaining effects are 0.1-0.3
-   points and need a clean, pre-defined adoption rule.
-3. **Decision-preserving speed-ups (S1-S4)**: prototyped, about 30% less solver time on expert and 35-38% on large
-   boards, identical games; faster trials for everything after.
-4. **Tie-breaking (W1)**: measured +0.24 ± 0.07 (3.3σ) on fresh seeds; confirm under the rule of B2 on tuning seeds and
-   all sizes, adopt if it passes.
-5. **Live pacing and stats (L7-L9)**, then documentation and cleanup (C1-C8), then research on the remaining gap to
-   JSMinesweeper (W2-W4).
+**Priority = impact × confidence ÷ effort**, with impact high 3, medium-high 2.5, medium 2, low-medium 1.5, low 1,
+tiny 0.5; confidence high 1, medium 0.8, low 0.5; effort small 1, small-medium 1.5, medium 2, large 3. Impact is judged
+against the repository goal: games won on the website (Expert first, all sizes), reliable decisions, trial speed,
+usability, and the owner's rules (one copy/pastable script, no magic numbers).
+
+| Rank | ID | Finding | Impact | Conf. | Effort | Priority | Reviews |
+|---|---|---|---|---|---|---|---|
+| 1 | L1 | [s] throws forever after a loss the auto sweeper did not cause | high | high | S | 3.0 | WU, CH |
+| 1 | L2 | [w] does nothing on fresh boards after the first game; repeated [e] prints nothing | high | high | S | 3.0 | WU |
+| 3 | B1 | Hung game makes expected win NaN; timeout per task, not per game | med-high | high | S | 2.5 | BM, CH |
+| 3 | B2 | Seed discipline: seed ledger (started) and a fixed adoption rule | med-high | high | S | 2.5 | BM |
+| 3 | B3 | Ablation blind spot: board-specific values hide the general ones | med-high | high | S | 2.5 | BM |
+| 3 | S1-S4 | Four decision-preserving speed-ups (0.70x expert, 0.63x 99x99) | med-high | high | S | 2.5 | PF |
+| 7 | W1 | Tie-breaking and scoring all tied cells (+0.24 ± 0.07 on fresh seeds) | high | medium | S | 2.4 | SA |
+| 8 | L3 | Inconsistent positions (wrong flags, wrong count): deaths on "certain" moves, crash | high | high | S-M | 2.0 | SC, WU |
+| 8 | L5 | Duplicate auto-sweep loops after pasting again or repeated [s] | medium | high | S | 2.0 | WU |
+| 8 | B12 | Strict identity check (every step's moves) for decision-preserving changes | medium | high | S | 2.0 | PF |
+| 8 | C2 | Remaining magic numbers (owner rule) | medium | high | S | 2.0 | CH |
+| 12 | L4 | Bomb count from the options form instead of the running game | medium | medium | S | 1.6 | WU, SC |
+| 13 | L6 | Keybinds fire in page inputs, with Ctrl/Meta/Alt and on key repeat | low-med | high | S | 1.5 | WU, CH |
+| 13 | L8 | Stats: time is solver time only, "Highest [3] time" misses guesses, empty [i], wrong `median` | low-med | high | S | 1.5 | WU, CH |
+| 13 | L13 | Console: only 3 of the tied cells evaluated, repeated numbers, noise lines | low-med | high | S | 1.5 | WU |
+| 13 | B7 | `verify-forced` does not check `getForcedWinChance`; expected win "n/a" on overfull boards | low-med | high | S | 1.5 | BM, CH |
+| 13 | C1 | Dead code and stray parameters | low-med | high | S | 1.5 | CH |
+| 13 | C3 | Config traps (`endgameSearchBudget: null` turns the search off, candidates 1 = 0, missing evaluation) | low-med | high | S | 1.5 | CH, SC |
+| 13 | C6 | States and solver codes compared as strings | low-med | high | S | 1.5 | CH |
+| 13 | C9 | Outdated verifier comments; `verify-forced` cannot fail on "below optimal" | low-med | high | S | 1.5 | CH |
+| 21 | L7 | Auto sweeper pacing: 7x more games per second possible | medium | high | S-M | 1.3 | WU, OR |
+| 21 | B4 | Automated periodic full re-evaluation, "on its own" mode | medium | high | S-M | 1.3 | BM |
+| 21 | B5 | Load-dependent timing: gate by CPU time or single thread, interleave variants | medium | high | S-M | 1.3 | BM, PF, SC |
+| 21 | C5 | Benchmark setup and game loop copied in four places | medium | high | S-M | 1.3 | CH |
+| 25 | L9 | 99x99 live: cache the square elements | low | high | S | 1.0 | WU |
+| 25 | L10 | Riddle finder mode stops at every [3] step and prints the answer | low | high | S | 1.0 | WU |
+| 25 | L12 | Question marks need a second key press | low | high | S | 1.0 | WU |
+| 25 | B6 | Sizes suite too small for 1-3 point regressions on large boards | medium | high | M | 1.0 | BM |
+| 25 | B8 | One check command, per-game JSON output, sequential testing | medium | high | M | 1.0 | BM, CH |
+| 25 | B9 | `--seed 0` unseeded; exact test when few games differ | low | high | S | 1.0 | BM |
+| 25 | B11 | Command-line arguments not validated | low | high | S | 1.0 | CH |
+| 25 | C7 | Remaining documentation fixes (README options, sample output, settings list, entry 15 note) | low | high | S | 1.0 | CH, BM |
+| 25 | C10 | Naming typos, swapped offset names, implicit globals, positional booleans | low | high | S | 1.0 | CH |
+| 34 | S5 | Benchmark forced check costs 8-9% of trial time | low-med | medium | S-M | 0.8 | PF |
+| 34 | S8 | Minor speed leftovers (settings copy per call, border cells built twice, closures) | low | medium | S | 0.8 | PF |
+| 36 | W2 | Paired JSMinesweeper harness to explain the remaining ~0.6 point gap | high | low | M | 0.75 | SA |
+| 37 | C4 | Move pure parts of `sweep()` to top-level functions in the same file | medium | high | L | 0.67 | CH |
+| 38 | B10 | Website fidelity: keep a snapshot and hash of the website's game code | low-med | medium | M | 0.6 | BM |
+| 38 | S6 | Work budget for the main combination search (never hang) | low-med | medium | M | 0.6 | PF, SC |
+| 40 | W5 | Overfull boards: check the website's bomb cap first | low | low | S | 0.5 | SC |
+| 40 | W6 | Isolated-unknowns path skips endgame search and look-ahead | tiny | high | S | 0.5 | SC |
+| 42 | W3 | Exact search triggered by few configurations (wider masks) | low-med | medium | L | 0.4 | SA, SC |
+| 42 | W4 | Avoid dead cells as guesses | low | medium | M | 0.4 | SA |
+| 44 | W7 | Derive the first click offset from board properties instead of one board key | low-med | low | M | 0.38 | BM |
+| 45 | S7 | Update only the affected grouping in hypotheticals (large boards) | low | medium | L | 0.27 | PF |
+| 46 | W8 | Early-game ceiling for cells away from the digits (rollouts) | low | low | M | 0.25 | SC |
+| 47 | W9 | Exact search of enclosed regions mid-game | tiny | medium | M | 0.2 | SA |
+| - | L11 | High scores: automated wins may be submitted as "cancel" | owner decision | | | | WU, OR |
+| - | C8 | Legacy browser virtual mode and `Math.seedrandom` in the pasted script | owner decision | | | | CH |
+
+**Execution order** (the ranking, adjusted for dependencies): (1) L1, L2, L3, L5, L4, L6: live-use bugs in one pass;
+(2) B1, B2, B3, B12: benchmark integrity, B12 before the speed-ups; (3) S1-S4; (4) W1 under the B2 rule; (5) the
+priority 1.5 group (C2, C3, C1, C6, C9, B7, L8, L13); (6) L7, B4, B5, C5; then the rest by rank. C4 goes with the
+first change that needs it (S7, W3).
 
 ## Findings
 
@@ -88,6 +141,12 @@ with small, verified items first:
   `getElementById` on every cell). Cache the square elements per board.
 - **L10** (low, verified) Riddle finder mode stops at every [3] step (1.7 per expert game) and prints the answer at once;
   the README promises "difficult problems for you to solve".
+- **L12** (low, verified) Question marks (the website's "marks" option): the website cycles flag, question mark and
+  blank, so the first [e] turns a "?" into blank and only the second [e] flags; it works but looks like a no-op.
+- **L13** (low-medium, verified) Console output: when more than 3 cells tie at the lowest bomb probability, only the
+  first 3 get an evaluation and the *Evaluation:* line reads as if those were all; evaluated lines repeat one number
+  twice (statistic and evaluation are equal today); "Candidate amount" and "took ... milliseconds" are noise for
+  humans. Partly resolved by W1 (all tied cells evaluated).
 - **L11** (owner decision, see below) The script replaces the page's `prompt` with one returning "cancel": fast
   automated wins may be submitted to the public high scores under the name "cancel" (inferred from the website code).
 
@@ -106,6 +165,13 @@ with small, verified items first:
   1.3% of games pick a dead cell while a live one is in the top 3; at most +0.1.
 - **W5** (low) Overfull boards: the website's placement is not uniform there (entry 14); check first whether the
   website caps the bomb count for custom boards, which may make these boards impossible.
+- **W7** (low-medium, low confidence) The expert first click (offset 3) is tied to the board key "30x16/99"; other
+  boards with similar size or density get offset 2. Derive the offset from board properties if measurements support a
+  rule (needs trials on several sizes).
+- **W8** (low) The early-game ceiling for cells away from the digits was never measured (entry 15 covered only the
+  candidate list; entry 16 showed the look-ahead overrates them, not their true value).
+- **W9** (tiny) Exact search of enclosed regions (fixed bomb count, independent of the rest) mid-game: such a region
+  exists at 4% of mid-game guesses, but the solver guessed inside one in 4 of 3000 games.
 - **W6** (tiny) The isolated-unknowns path (no digits next to unknown cells) skips the endgame search and look-ahead;
   about 10 guesses in 2000 expert games.
 
@@ -131,6 +197,11 @@ with small, verified items first:
 - **B8** (medium) One check command (the three verifiers plus a quick gate), per-game JSON output, and sequential
   testing to stop clear comparisons early.
 - **B9** (low) `--seed 0` makes game 0 unseeded; the normal approximation is weak when few games differ.
+- **B11** (low, verified) Command-line arguments are not validated (`--games abc` gives NaN games, `--set key` without
+  `=` throws a cryptic JSON error).
+- **B12** (medium) "Games played differently" compares only won, guesses and steps; decision-preserving changes should
+  be checked on every step's moves (the performance review's `check.js` does this).
+- Also in B4: with `--compare`, ablation deltas are shown against the reference, not the current version.
 - **B10** (low-medium) The website fidelity check relies on a browser harness outside the repository; keep at least a
   snapshot and hash of the website's game code.
 
@@ -147,6 +218,9 @@ with small, verified items first:
 - **S6** Complexity risk: the main combination search has no work budget; a long, weakly constrained border could grow
   exponentially (largest seen: 5880 combinations over 57 candidates, 420 ms). A deterministic work counter with a
   fallback only changes decisions where the solver would otherwise hang.
+- **S8** Minor leftovers: `getBoardSettings` copies the settings and about 40 closures are created per `sweep` call
+  (adds up over hypotheticals), `forEach` closures in `enumerateEndgameConfigurations`, border cells built twice per
+  step, quadratic `includes` in grouping helpers (harmless at observed sizes); about 3-6% together.
 - **S7** Correction: "cheaper hypothetical boards" is worth only 3-5% on expert (copying is a small part); "update only
   the affected grouping" matters on large and dense boards.
 
@@ -165,9 +239,15 @@ with small, verified items first:
 - **C5** Benchmark duplication: sandbox setup and the game loop are copied in four places; share them via
   `bench/sandbox.js`.
 - **C6** States and solver codes are compared as strings (`"death"`, `solver.includes("g")`).
-- **C7** Documentation: stale numbers (fixed here), README bench options incomplete, RESULTS entry 15 still names the
+- **C7** Documentation: stale numbers and backlog numbering (fixed), README bench options incomplete (`--set` needs
+  JSON), README sample output lacks two lines, README lists 4 of 10 `autoSweepConfig` keys, RESULTS entry 15 still names the
   removed tool and its note sits in entry 16, "recoverable" wording for patches that were never committed (entries
   16, 18: only the description remains).
+- **C9** Verifier comments are outdated (`verify-forced` still describes the endgame search as missing and does not
+  fail when the solver is below optimal), and the definition of forced positions lives in three places.
+- **C10** Naming: typos (`executeInterationsOnBoard`, `bombAmout`, `occurenceCount`), `applyToNeighbors` swaps its
+  offset names, implicit globals (`sweepKeyDown`, `window["lastForSweepStep..."]`), "flags" used for bombs, three
+  positional booleans in `sweep(...)`.
 - **C8** Legacy in-browser virtual mode (`isVirtualMode`, `virtualBatchSize`) and `Math.seedrandom` (not on the website)
   in the pasted script; the benchmark needs only the virtual game functions (owner decision).
 
