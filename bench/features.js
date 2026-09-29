@@ -4,4 +4,8 @@
 //
 // Entry format: { key: "<solverConfig key>", values: [<all values worth comparing>] }
 
-module.exports = [{ key: "firstClickCornerOffset", values: [null, 1, 2, 3] }];
+module.exports = [
+    { key: "firstClickCornerOffset", values: [null, 1, 2, 3] },
+    { key: "guessLookaheadCandidates", values: [0, 3, 6, 12] },
+    { key: "guessLookaheadBudget", values: [5000, 20000, 100000] }
+];

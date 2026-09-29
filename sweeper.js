@@ -21,7 +21,9 @@ let autoSweepConfig = {
 
 // Solver features; bench/features.js lists the alternatives that bench/run.js --ablate re-evaluates
 let solverConfig = {
-    firstClickCornerOffset: 2 // null: first click in the center, n: n cells in from the top left corner (at most the center)
+    firstClickCornerOffset: 2, // null: first click in the center, n: n cells in from the top left corner (at most the center)
+    guessLookaheadCandidates: 3, // 0: guess the safest cell, n: of the n safest cells guess the one most likely to survive the next move too
+    guessLookaheadBudget: 20000 // max bomb combinations the look-ahead enumerates per guess, keeps large boards fast (null: no limit)
 };
 
 let autoSweepStats = { gameStats: [] };
@@ -653,26 +655,43 @@ function sweepPage(withGuessing = true, doLog = true, config = null, stats = nul
     }
 }
 
-// The solver's copy of the board with its neighbor lists, reused between steps while the board size stays the same
-let solverField = null;
+// The solver's copies of the board with their neighbor lists, reused between steps while the board size stays the same.
+// One per nesting depth, as the guess look-ahead analyzes hypothetical boards while the real one is in use.
+let solverFields = [];
+let sweepDepth = 0;
 
-function sweep(fieldToSweep, bombAmount, withGuessing = true, doLog = true) {
+// isAnalysis: only analyze the position (see analyzePosition), used by the guess look-ahead
+function sweep(fieldToSweep, bombAmount, withGuessing = true, doLog = true, isAnalysis = false) {
     let interactions = [];
     let revealedCells = new Set();
     let flaggedCells = new Set();
     let cellCounts = { cells: 0, hidden: 0, flagged: 0, revealedBombs: 0 };
-    let checkResult = checkForAndAddInteractions();
+    let depth = sweepDepth;
+    let checkResult;
+
+    sweepDepth += 1;
+
+    try {
+        checkResult = checkForAndAddInteractions();
+    } finally {
+        sweepDepth -= 1;
+    }
 
     let sweepResult = {
         interactions: interactions,
         state: checkResult.state,
-        solver: checkResult.solver
+        solver: checkResult.solver,
+        analysis: checkResult.analysis
     };
 
     return sweepResult;
 
     function checkForAndAddInteractions() {
         let field = copyAndInitializeField(fieldToSweep);
+
+        if (isAnalysis) {
+            return analyzePosition(field);
+        }
 
         if (checkBombDeath()) {
             return onBombDeath();
@@ -709,6 +728,32 @@ function sweep(fieldToSweep, bombAmount, withGuessing = true, doLog = true) {
         }
 
         return checkCombinatorially(field, borderCellGroupings, outsideUnknowns, flagsLeft);
+    }
+
+    // How many bomb configurations fit the position (log) and how safe its safest cell is (1 if the game is won
+    // or a certain safe cell exists). Skips the simple solvers, as the full check covers them.
+    function analyzePosition(field) {
+        let borderCellGroupings = getBorderCellGroupings(field);
+        let outsideUnknowns = getOutsideUnknowns(field);
+        let flagsLeft = getFlagsLeft(field);
+        let analysis;
+
+        if (borderCellGroupings.length === 0) {
+            let isPossible = flagsLeft >= 0 && flagsLeft <= outsideUnknowns.length;
+            analysis = {
+                logWeight: isPossible ? logBinomialCoefficient(outsideUnknowns.length, flagsLeft) : -Infinity,
+                bestSafety: outsideUnknowns.length > 0 ? 1 - flagsLeft / outsideUnknowns.length : 1,
+                combinationAmount: 0
+            };
+        } else {
+            analysis = checkAllValidCombinations(field, borderCellGroupings, outsideUnknowns, flagsLeft).analysis;
+        }
+
+        if (checkSolved()) {
+            analysis.bestSafety = 1;
+        }
+
+        return { state: sweepStates.stuck, solver: null, analysis: analysis };
     }
 
     function checkCombinatorially(field, borderCellGroupings, outsideUnknowns, flagsLeft) {
@@ -1000,9 +1045,11 @@ function sweep(fieldToSweep, bombAmount, withGuessing = true, doLog = true) {
     function getSolverField(fieldToSweep) {
         let height = fieldToSweep.length;
         let width = height > 0 ? fieldToSweep[0].length : 0;
+        let solverField = solverFields[depth];
 
         if (!solverField || solverField.length !== height || (height > 0 && solverField[0].length !== width)) {
             solverField = createSolverField(fieldToSweep, width, height);
+            solverFields[depth] = solverField;
         }
 
         return solverField;
@@ -1098,7 +1145,7 @@ function sweep(fieldToSweep, bombAmount, withGuessing = true, doLog = true) {
             let groupingFlagsLeft = totalFlagsLeft - leastBombsCount;
             let searchResult = checkGrouping(borderCellGroupings[i], groupingFlagsLeft);
 
-            if (searchResult.certainResultFound) {
+            if (searchResult.certainResultFound && !isAnalysis) {
                 resultInfo.certainResultFound = true;
                 break;
             }
@@ -1110,7 +1157,10 @@ function sweep(fieldToSweep, bombAmount, withGuessing = true, doLog = true) {
         if (!resultInfo.certainResultFound) {
             let combinedCheckResult = mergeGroupingsCombinationsAndCheck(groupingCheckResults);
 
-            if (combinedCheckResult.certainResultFound) {
+            if (isAnalysis) {
+                resultInfo.analysis = analyzeCombinations(combinedCheckResult);
+                resultInfo.analysis.combinationAmount = groupingCheckResults.reduce((a, b) => a + b.validCombinations.length, 0);
+            } else if (combinedCheckResult.certainResultFound) {
                 resultInfo.certainResultFound = true;
             } else {
                 handleNoCertainResultFound(combinedCheckResult);
@@ -1765,6 +1815,114 @@ function sweep(fieldToSweep, bombAmount, withGuessing = true, doLog = true) {
             };
         }
 
+        function analyzeCombinations(checkResult) {
+            if (checkResult.mergedSummaries.length === 0) {
+                return { logWeight: -Infinity, bestSafety: 0 };
+            }
+
+            let cellProbs = calculateCandidateCellProbs(checkResult);
+            let bestFraction = cellProbs.reduce((a, b) => Math.min(a, b.fraction), 1);
+
+            // Only the outsider fraction matters here, not which outsider would be picked (calculateOutsiderCellProb)
+            if (outsideUnknowns.length > 0) {
+                let averageFlagsInBorder = 0;
+                cellProbs.forEach((cellProb) => (averageFlagsInBorder += cellProb.fraction));
+                bestFraction = Math.min(bestFraction, (totalFlagsLeft - averageFlagsInBorder) / outsideUnknowns.length);
+            }
+
+            return {
+                logWeight: logSumExp(checkResult.mergedSummaries.map((summary) => summary.logWeight)),
+                bestSafety: Math.min(1, 1 - bestFraction)
+            };
+        }
+
+        // Of the given guesses, picks the one most likely to survive both itself and the safest next move
+        function chooseGuessByLookahead(cellProbs) {
+            let bestCellProb = cellProbs[0];
+            let bestScore = -1;
+            let budget = { combinationsLeft: solverConfig.guessLookaheadBudget ?? Infinity };
+
+            for (let i = 0; i < cellProbs.length; i++) {
+                let cellProb = cellProbs[i];
+
+                // Sorted by safety, and a score can not exceed the safety: no later cell can score better
+                if (1 - cellProb.fraction <= bestScore) {
+                    break;
+                }
+
+                let expectedNextSafety = getExpectedNextSafety(cellProb.candidate, budget);
+
+                if (expectedNextSafety === null) {
+                    break;
+                }
+
+                cellProb.lookaheadScore = (1 - cellProb.fraction) * expectedNextSafety;
+
+                if (cellProb.lookaheadScore > bestScore) {
+                    bestCellProb = cellProb;
+                    bestScore = cellProb.lookaheadScore;
+                }
+            }
+
+            return bestCellProb;
+        }
+
+        // Safety of the next move, averaged over the values the cell can show if it is safe.
+        // null when the budget runs out (counted in bomb combinations, so results do not depend on timing).
+        function getExpectedNextSafety(cell, budget) {
+            let fieldCell = field[cell.y][cell.x];
+            let outcomes = [];
+
+            for (let value = fieldCell.flaggedNeighborAmount; value <= fieldCell.hiddenNeighborAmount; value++) {
+                if (budget.combinationsLeft < 0) {
+                    return null;
+                }
+
+                let hypotheticalField = createFieldWithRevealedCell(cell, value);
+                let analysis = sweep(hypotheticalField, bombAmount, false, false, true).analysis;
+                budget.combinationsLeft -= analysis.combinationAmount;
+                outcomes.push(analysis);
+            }
+
+            let maxLogWeight = outcomes.reduce((a, b) => Math.max(a, b.logWeight), -Infinity);
+
+            if (maxLogWeight === -Infinity) {
+                return 0;
+            }
+
+            let totalWeight = 0;
+            let expectedSafety = 0;
+
+            outcomes.forEach((outcome) => {
+                let weight = Math.exp(outcome.logWeight - maxLogWeight);
+                totalWeight += weight;
+                expectedSafety += weight * outcome.bestSafety;
+            });
+
+            return expectedSafety / totalWeight;
+        }
+
+        function createFieldWithRevealedCell(cell, value) {
+            let hypotheticalField = fieldToSweep.slice(0);
+            let row = fieldToSweep[cell.y].slice(0);
+            let cellToSweep = row[cell.x];
+
+            row[cell.x] = {
+                referenceCell: cellToSweep.referenceCell ?? cellToSweep,
+                x: cell.x,
+                y: cell.y,
+                value: value,
+                isDigit: true,
+                isRevealedBomb: false,
+                isHidden: false,
+                isFlagged: false,
+                isUnknown: false
+            };
+
+            hypotheticalField[cell.y] = row;
+            return hypotheticalField;
+        }
+
         function handleNoCertainResultFound(checkResult) {
             let cellProbs = calculateCandidateCellProbs(checkResult);
             let outsider = calculateOutsiderCellProb(cellProbs);
@@ -1792,6 +1950,15 @@ function sweep(fieldToSweep, bombAmount, withGuessing = true, doLog = true) {
 
             if (withGuessing && cellProbs.length > 0) {
                 let bestScoreCellProb = cellProbs[0];
+
+                if (solverConfig.guessLookaheadCandidates > 1) {
+                    bestScoreCellProb = chooseGuessByLookahead(cellProbs.slice(0, solverConfig.guessLookaheadCandidates));
+
+                    if (bestScoreCellProb.lookaheadScore !== undefined) {
+                        resultInfo.messages.push("Look-ahead: survive this and next move " + (bestScoreCellProb.lookaheadScore * 100).toFixed(2) + "%");
+                    }
+                }
+
                 resultInfo.messages.push("Reveal lowest score cell (" + bestScoreCellProb.percentage + ")");
                 revealCell(bestScoreCellProb.candidate);
             } else {
@@ -2239,6 +2406,11 @@ function simulate(element, eventName, mouseButton) {
 
         return destination;
     }
+}
+
+function logSumExp(values) {
+    let max = values.reduce((a, b) => Math.max(a, b), -Infinity);
+    return max === -Infinity ? max : max + Math.log(values.reduce((a, b) => a + Math.exp(b - max), 0));
 }
 
 function logBinomialCoefficient(n, k) {

@@ -234,3 +234,83 @@ Live (website code in Chromium): identical 200 expert games, solver time 22.6 ->
 getValidCombinationsForNeighbors skipped the all-zero combination, so a digit whose bombs are all flagged made its grouping impossible.
 Normal play never reached it (the trivial rules resolve such digits first); the look-ahead analysis (entry 10) does. 0 games played differently on all suites.
 
+## 10. Guess look-ahead (solverConfig.guessLookaheadCandidates, guessLookaheadBudget)
+
+Of the n safest guesses, pick the one maximizing P(safe) × E[safety of the best next move], averaged over the values the cell can show.
+Each value is analyzed exactly on a hypothetical board (sweep in analysis mode: configuration count and best safety; 1 if a certain safe cell exists).
+`bench/verify-analysis.js` compares this with brute-force enumeration: 6947 hypothetical boards, 0 mismatches (found the bug of entry 9).
+Exact pruning: candidates are sorted by safety and a score can not exceed the safety, so evaluation stops early (-37% time, identical games).
+Budget: at most 20000 enumerated bomb combinations per guess (deterministic, not time based); on 50x50 the slowest step drops from 5.2 s to 0.9 s with identical wins.
+Tried and dropped: caching solved groupings across the hypothetical boards (slower on expert; the cost is in the grouping that contains the revealed cell).
+
+Expert ablation (current = look-ahead 3, budget 100000 at the time):
+
+- Variant 0: current
+- Variant 1: current with firstClickCornerOffset=null
+- Variant 2: current with firstClickCornerOffset=1
+- Variant 3: current with firstClickCornerOffset=3
+- Variant 4: current with guessLookaheadCandidates=0
+- Variant 5: current with guessLookaheadCandidates=6
+- Variant 6: current with guessLookaheadCandidates=12
+
+| Preset | Variant | Win % | Δ win vs variant 0 (paired) | Games played differently | Guesses/game | ms/game | Slowest step ms | Errors |
+|---|---|---|---|---|---|---|---|---|
+| expert 30x16/99 | 0 | 53.52 ± 0.50 |  |  | 2.54 | 14.0 | 765 | 0 |
+|  | 1 | 52.04 ± 0.50 | -1.48 ± 0.43 (-3.4σ) | 9906 | 2.54 | 20.0 | 1179 | 0 |
+|  | 2 | 51.35 ± 0.50 | -2.17 ± 0.32 (-6.8σ) | 8670 | 2.77 | 14.2 | 958 | 0 |
+|  | 3 | 53.63 ± 0.50 | +0.11 ± 0.33 (0.3σ) | 8679 | 2.48 | 13.7 | 748 | 0 |
+|  | 4 | 52.29 ± 0.50 | -1.23 ± 0.27 (-4.6σ) | 3866 | 2.68 | 5.4 | 70 | 0 |
+|  | 5 | 53.38 ± 0.50 | -0.14 ± 0.14 (-1.0σ) | 1163 | 2.50 | 15.1 | 1195 | 0 |
+|  | 6 | 53.34 ± 0.50 | -0.18 ± 0.15 (-1.2σ) | 1236 | 2.50 | 15.4 | 1627 | 0 |
+
+Robustness gate (current version: no errors, no step over 2000 ms): PASS
+
+50x50 ablation (budget alternatives):
+
+| big 50x50/500 | current (3, budget 100000) 36.25 ± 2.40, slowest step 2641 ms | budget 20000: +0.00, 2 games differ, slowest 907 ms | no budget: +0.00, slowest 4465 ms |
+
+All suites, look-ahead 3 with budget 20000 vs entry 9 (no look-ahead):
+
+| Preset | Variant | Win % | Δ win vs variant 0 (paired) | Games played differently | Guesses/game | ms/game | Slowest step ms | Errors |
+|---|---|---|---|---|---|---|---|---|
+| expert 30x16/99 | 0 | 52.29 ± 0.50 |  |  | 2.68 | 5.5 | 52 | 0 |
+|  | 1 | 53.52 ± 0.50 | +1.23 ± 0.27 (4.6σ) | 3865 | 2.54 | 13.6 | 486 | 0 |
+| beginner 9x9/10 | 0 | 96.86 ± 0.25 |  |  | 0.10 | 0.2 | 10 | 0 |
+|  | 1 | 96.88 ± 0.25 | +0.02 ± 0.04 (0.4σ) | 32 | 0.10 | 0.4 | 20 | 0 |
+| intermediate 16x16/40 | 0 | 89.84 ± 0.43 |  |  | 0.43 | 1.0 | 11 | 0 |
+|  | 1 | 89.88 ± 0.43 | +0.04 ± 0.16 (0.3σ) | 283 | 0.41 | 1.7 | 51 | 0 |
+| wide 60x16/198 | 0 | 34.20 ± 1.50 |  |  | 3.98 | 15.3 | 30 | 0 |
+|  | 1 | 35.90 ± 1.52 | +1.70 ± 0.84 (2.0σ) | 538 | 3.86 | 33.1 | 300 | 0 |
+| square 24x24/115 | 0 | 59.20 ± 1.10 |  |  | 2.11 | 6.3 | 63 | 0 |
+|  | 1 | 59.85 ± 1.10 | +0.65 ± 0.53 (1.2σ) | 612 | 2.00 | 11.9 | 372 | 0 |
+| big 50x50/500 | 0 | 34.25 ± 2.37 |  |  | 3.00 | 52.0 | 43 | 0 |
+|  | 1 | 36.25 ± 2.40 | +2.00 ± 1.11 (1.8σ) | 167 | 3.05 | 80.1 | 944 | 0 |
+| max 99x99/1960 | 0 | 12.50 ± 5.23 |  |  | 3.90 | 403.4 | 149 | 0 |
+|  | 1 | 15.00 ± 5.65 | +2.50 ± 4.31 (0.6σ) | 21 | 4.17 | 451.0 | 146 | 0 |
+| max 99x99/2450 (25%) | 0 | 0.00 ± 0.00 |  |  | 6.50 | 438.1 | 97 | 0 |
+|  | 1 | 0.00 ± 0.00 | +0.00 ± 0.00 (0.0σ) | 12 | 8.06 | 1282.7 | 467 | 0 |
+| max 99x99/2940 (30%) | 0 | 0.00 ± 0.00 |  |  | 4.75 | 55.2 | 17 | 0 |
+|  | 1 | 0.00 ± 0.00 | +0.00 ± 0.00 (0.0σ) | 10 | 7.38 | 298.7 | 90 | 0 |
+| max 99x99/3920 (40%) | 0 | 0.00 ± 0.00 |  |  | 4.06 | 46.7 | 20 | 0 |
+|  | 1 | 0.00 ± 0.00 | +0.00 ± 0.00 (0.0σ) | 10 | 3.56 | 116.6 | 56 | 0 |
+| max 99x99/8820 (90%) | 0 | 0.00 ± 0.00 |  |  | 1.50 | 10.5 | 11 | 0 |
+|  | 1 | 0.00 ± 0.00 | +0.00 ± 0.00 (0.0σ) | 1 | 1.38 | 18.9 | 32 | 0 |
+| max 99x99/9795 (overfull) | 0 | 100.00 ± 0.00 |  |  | 1.00 | 8.8 | 10 | 0 |
+|  | 1 | 100.00 ± 0.00 | +0.00 ± 0.00 (0.0σ) | 8 | 2.00 | 33.7 | 23 | 0 |
+| dense 30x16/200 | 0 | 0.00 ± 0.00 |  |  | 4.14 | 3.6 | 13 | 0 |
+|  | 1 | 0.00 ± 0.00 | +0.00 ± 0.00 (0.0σ) | 303 | 4.03 | 13.5 | 25 | 0 |
+| overfull 9x9/75 | 0 | 92.50 ± 1.86 |  |  | 1.28 | 0.4 | 7 | 0 |
+|  | 1 | 85.00 ± 2.52 | -7.50 ± 1.86 (-4.0σ) | 200 | 2.18 | 1.6 | 16 | 0 |
+| line 1x30/5 | 0 | 48.80 ± 2.24 |  |  | 2.90 | 0.1 | 6 | 0 |
+|  | 1 | 48.80 ± 2.24 | +0.00 ± 0.00 (0.0σ) | 0 | 2.90 | 0.1 | 7 | 0 |
+| tiny 2x2/3 | 0 | 100.00 ± 0.00 |  |  | 0.00 | 0.0 | 0 | 0 |
+|  | 1 | 100.00 ± 0.00 | +0.00 ± 0.00 (0.0σ) | 0 | 0.00 | 0.0 | 0 | 0 |
+| empty 10x10/0 | 0 | 100.00 ± 0.00 |  |  | 0.00 | 0.0 | 0 | 0 |
+|  | 1 | 100.00 ± 0.00 | +0.00 ± 0.00 (0.0σ) | 0 | 0.00 | 0.0 | 0 | 0 |
+
+Robustness gate (current version: no errors, no step over 2000 ms): PASS
+
+Gains on all realistic sizes (expert +1.23, 4.6σ; wide +1.7; big +2.0), neutral on beginner/intermediate.
+Regression on overfull 9x9/75 (-7.5): tiny endgames (e.g. 3 bombs among 8 equally likely cells) where one move of look-ahead is not the win probability.
+Candidate fix: exact endgame search when few unknowns remain (next feature). Cost: expert 5.5 -> 13.6 ms per game.
+

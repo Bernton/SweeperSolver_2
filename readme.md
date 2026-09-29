@@ -67,4 +67,6 @@ All settings for the auto sweeper can be found within the global object *autoSwe
 
 `node bench/verify-website.js` checks that the virtual game generates the same boards as the website code.
 
+`node bench/verify-analysis.js` checks the look-ahead's analysis of hypothetical boards against brute-force enumeration.
+
 Evaluation results are logged in *bench/RESULTS.md*.
