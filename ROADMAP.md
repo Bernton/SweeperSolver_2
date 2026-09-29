@@ -46,7 +46,20 @@ probability (entry 15): the solver's early choice beats every fixed alternative,
 Impact = expected effect on the expert win rate or on trial time; each item is evaluated with the benchmark
 (paired, ablation) and confirmed on held-out seeds before it is adopted.
 
-### Next: to be chosen (see the ranked items below)
+### Next options
+
+The win rate items of the list are done or measured negative (entries 14-18); the remaining one (overfull boards) only
+matters on boards with more bombs than cells outside the first click's area. Candidates for the next task:
+
+1. **Live auto sweeper pacing** (recommended next): for real use on the website. The auto sweeper plays about 3 expert
+   games per second although solving and clicking take about 30 ms per game, because every step waits for a browser
+   timer (at least 4 ms). Run several steps per timer tick, time-boxed so the page stays responsive (item 12).
+2. **Trial speed**: cheaper hypothetical boards in the look-ahead (estimate 20-30% on expert, not measured) and an
+   incremental trivial stage for large boards (items 7-9).
+3. **Housekeeping**: one check command running the three verifiers and the gate (item 15), and removing the old-IE code
+   and the wrong, unused `median` (item 17).
+4. **New win rate ideas beyond the list**, e.g. a look-ahead two moves deep for the top candidates, measured the same way
+   (benchmark, held-out seeds; no code kept if negative or inconclusive).
 
 ### Win rate
 
