@@ -1251,35 +1251,6 @@ function sweep(fieldToSweep, bombAmount, withGuessing = true, doLog = true, isAn
             });
         }
 
-        function getValidCombinationsForNeighbors(neighbors, flagsLeft) {
-            let combination = Array(neighbors.length).fill(0);
-            let validCombinations = flagsLeft === 0 ? [combination.slice(0)] : []; // the loop below starts after all zeros
-            let lastI = combination.length - 1;
-
-            while (true) {
-                combination[0] += 1;
-
-                for (let i = 0; i < lastI; i++) {
-                    if (combination[i] > neighbors[i].clusterSize) {
-                        combination[i] = 0;
-                        combination[i + 1] += 1;
-                    } else {
-                        break;
-                    }
-                }
-
-                if (combination[lastI] > neighbors[lastI].clusterSize) {
-                    break;
-                }
-
-                if (combination.reduce((a, b) => a + b, 0) === flagsLeft) {
-                    validCombinations.push(combination.slice(0));
-                }
-            }
-
-            return validCombinations;
-        }
-
         function addCandidateConditions(candidates, digits) {
             clusterDigitNeighbors(digits);
             setupCandidatesForConditions(candidates);
@@ -1287,29 +1258,25 @@ function sweep(fieldToSweep, bombAmount, withGuessing = true, doLog = true, isAn
             digits.forEach((digit) => {
                 let flagsLeft = digit.value - digit.flaggedNeighborAmount;
                 let neighbors = digit.neighbors;
-                let validCombinations = getValidCombinationsForNeighbors(neighbors, flagsLeft);
 
                 neighbors.forEach((neighbor) => {
+                    // Each unassigned cluster can still take any bomb amount from 0 to its size, so the digit can be
+                    // completed exactly if its bombs left lie between the assigned sum and that sum plus their sizes
                     let condition = (assignment) => {
-                        for (let i = 0; i < validCombinations.length; i++) {
-                            let validCombination = validCombinations[i];
-                            let contraintMet = true;
+                        let assignedSum = 0;
+                        let unassignedMax = 0;
 
-                            for (let j = 0; j < validCombination.length; j++) {
-                                let value = assignment[neighbors[j].assignIndex];
+                        for (let j = 0; j < neighbors.length; j++) {
+                            let value = assignment[neighbors[j].assignIndex];
 
-                                if (value !== null && value !== validCombination[j]) {
-                                    contraintMet = false;
-                                    break;
-                                }
-                            }
-
-                            if (contraintMet) {
-                                return true;
+                            if (value === null) {
+                                unassignedMax += neighbors[j].clusterSize;
+                            } else {
+                                assignedSum += value;
                             }
                         }
 
-                        return false;
+                        return assignedSum <= flagsLeft && flagsLeft <= assignedSum + unassignedMax;
                     };
 
                     addConditionedPeers(neighbor, neighbors);
@@ -1481,9 +1448,13 @@ function sweep(fieldToSweep, bombAmount, withGuessing = true, doLog = true, isAn
             return createdArray;
         }
 
+        // Tests the value in place (restored afterwards) instead of on a copy of the assignment
         function isValidAssignmentValue(assignment, candidates, index, value) {
-            let testAssignment = createArrayWithAssignment(assignment, index, value);
-            return isValidAssignmentChange(testAssignment, candidates, index);
+            let previousValue = assignment[index];
+            assignment[index] = value;
+            let isValid = isValidAssignmentChange(assignment, candidates, index);
+            assignment[index] = previousValue;
+            return isValid;
         }
 
         function getUnassignedAmount(assignment) {
