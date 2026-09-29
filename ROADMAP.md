@@ -45,11 +45,7 @@ probability (entry 15): the solver's early choice beats every fixed alternative,
 Impact = expected effect on the expert win rate or on trial time; each item is evaluated with the benchmark
 (paired, ablation) and confirmed on held-out seeds before it is adopted.
 
-### Next: more candidate cells away from the digits (win rate)
-
-Only one cell away from the digits (the one most likely to open an area) is considered as a guess; 6.8% of guesses are
-such cells, and rollouts (entry 15) only covered the candidate list. Add the best few of them (by chance of an opening
-and bomb probability) to the look-ahead candidates, measure with the benchmark, confirm on held-out seeds.
+### Next: to be chosen (see the ranked items below)
 
 ### Win rate
 
@@ -62,7 +58,8 @@ and bomb probability) to the look-ahead candidates, measure with the benchmark, 
    more seeds when the solver changes.
 5. **Overfull boards**: model the website's non-uniform placement around the first click when there are more bombs
    than cells outside that area (bench/RESULTS.md entry 14); only matters on those boards.
-6. Done: exact endgame search (entry 14). Not worth it (measured): more look-ahead candidates (6 or 12 instead of 3; covers ties, no gain), dropping the
+6. Done: exact endgame search (entry 14). Not worth it (measured): more cells away from the digits as look-ahead
+   candidates (entry 16), more look-ahead candidates (6 or 12 instead of 3; covers ties, no gain), dropping the
    look-ahead budget.
 
 ### Trial speed

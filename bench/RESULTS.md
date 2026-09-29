@@ -482,3 +482,25 @@ For the first early guess (more than EARLY_MIN_UNKNOWN_CELLS = 60 unknown cells)
 
 Conclusion: among the cells with the lowest bomb probability, the solver's early choice is the best measurable one; no headroom found there. Early losses are mostly inherent risk (about 10% bomb probability per early guess). Not covered: cells outside the candidate list (only one cell away from the digits is considered) and strategies deeper than one move.
 
+## 16. More cells away from the digits as look-ahead candidates (tried, not adopted)
+
+Experiment: solverConfig.guessLookaheadOutsiders added that many cells away from the digits (most likely openings first) to the look-ahead candidates, next to the 3 cells with the lowest bomb probability. Expert, 10000 games, vs 0 (current):
+
+- Variant 0: current
+- Variant 1: current with guessLookaheadOutsiders=1
+- Variant 2: current with guessLookaheadOutsiders=2
+- Variant 3: current with guessLookaheadOutsiders=4
+- Variant 4: current with guessLookaheadOutsiders=8
+
+| Preset | Variant | Win % | Δ win vs variant 0 (paired) | Expected win % | Δ expected (paired) | Forced games | Games played differently | Guesses/game | ms/game | Slowest step ms | Errors |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| expert 30x16/99 | 0 | 54.24 ± 0.50 |  | 53.62 ± 0.43 |  | 28.2% |  | 2.52 | 24.8 | 420 | 0 |
+|  | 1 | 54.24 ± 0.50 | +0.00 ± 0.01 (0.0σ) | 53.64 ± 0.43 | +0.02 ± 0.01 (1.4σ) | 28.2% | 19 | 2.52 | 24.3 | 410 | 0 |
+|  | 2 | 54.22 ± 0.50 | -0.02 ± 0.07 (-0.3σ) | 53.64 ± 0.43 | +0.02 ± 0.07 (0.3σ) | 28.2% | 249 | 2.53 | 27.2 | 443 | 0 |
+|  | 3 | 54.00 ± 0.50 | -0.24 ± 0.14 (-1.7σ) | 53.39 ± 0.43 | -0.23 ± 0.13 (-1.8σ) | 28.2% | 700 | 2.54 | 26.3 | 432 | 0 |
+|  | 4 | 53.85 ± 0.50 | -0.39 ± 0.15 (-2.6σ) | 53.23 ± 0.43 | -0.39 ± 0.13 (-2.9σ) | 28.2% | 751 | 2.53 | 26.6 | 450 | 0 |
+
+Robustness gate (current version: no errors, no step over SLOW_STEP_TIME = 2000 ms): PASS
+
+1 or 2 extra cells change almost nothing; 4 and 8 are worse (-0.23 ± 0.13, -0.39 ± 0.13 expected): with more such cells in the comparison, the look-ahead's survival of the next move overrates them. Removed again (patch not kept in the code).
+
