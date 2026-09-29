@@ -504,3 +504,6 @@ Robustness gate (current version: no errors, no step over SLOW_STEP_TIME = 2000 
 
 1 or 2 extra cells change almost nothing; 4 and 8 are worse (-0.23 ± 0.13, -0.39 ± 0.13 expected): with more such cells in the comparison, the look-ahead's survival of the next move overrates them. Removed again (patch not kept in the code).
 
+
+Note (entry 15): bench/measure-early.js and the guess candidates it read from the step result were removed again after the measurement (negative result, no code kept for it); both are in commit b22cc61.
+

@@ -49,7 +49,7 @@ Impact = expected effect on the expert win rate or on trial time; each item is e
 
 ### Win rate
 
-2. Done: early-game ceiling measurement (entry 15, `bench/measure-early.js`): no headroom found among the cells with
+2. Done: early-game ceiling measurement (entry 15; the rollout tool was removed, recoverable from commit b22cc61): no headroom found among the cells with
    the lowest bomb probability.
 3. **Evaluation blend**: combine survival with the next move with progress (chance the guess gives a certain safe move)
    and look further than one move for the top candidates. Unknown gain; JSMinesweeper's main difference besides the
@@ -84,6 +84,9 @@ Impact = expected effect on the expert win rate or on trial time; each item is e
     do on our side.
 
 ### Methodology
+
+- **Rule**: experiments that are negative or inconclusive leave no code behind; they are documented in bench/RESULTS.md
+  (with the commit to recover them) and listed here as tried.
 
 14. **Held-out confirmation**: tune on seeds 1-10000, confirm adopted changes with `--seed 100001` before committing
     (done for the current features, see bench/RESULTS.md entry 12).
