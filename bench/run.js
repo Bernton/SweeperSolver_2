@@ -308,7 +308,7 @@ function printResults(variants, presets, results) {
         console.log("\nErrors:\n" + errorLines.join("\n"));
     }
 
-    console.log("\nRobustness gate (current version: no errors, no step over " + SLOW_STEP_TIME + " ms): " + (gatePassed ? "PASS" : "FAIL"));
+    console.log("\nRobustness gate (current version: no errors, no step over SLOW_STEP_TIME = " + SLOW_STEP_TIME + " ms): " + (gatePassed ? "PASS" : "FAIL"));
     return gatePassed;
 }
 
