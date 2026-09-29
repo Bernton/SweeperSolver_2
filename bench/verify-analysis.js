@@ -9,13 +9,19 @@ const path = require("path");
 const vm = require("vm");
 const { mulberry32 } = require("./sandbox");
 
-const games = Number(process.argv[2] || 100);
+const DEFAULT_GAMES_PER_BOARD = 100;
+// Brute force enumerates all bomb placements on the unknown cells; beyond about this many it takes too long
+const MAX_BRUTE_FORCE_UNKNOWNS = 22;
+// The analysis counts configurations in log space, so the count comes back with rounding errors
+const COUNT_RELATIVE_TOLERANCE = 1e-6;
+const SAFETY_TOLERANCE = 1e-9;
+
+const games = Number(process.argv[2] || DEFAULT_GAMES_PER_BOARD);
 const boards = [
     { width: 6, height: 6, bombs: 7 },
     { width: 8, height: 5, bombs: 8 },
     { width: 7, height: 7, bombs: 10 }
 ];
-const maxUnknowns = 22;
 
 let sandboxMath = Object.create(Math);
 sandboxMath.seedrandom = function (seed) {
@@ -48,7 +54,7 @@ boards.forEach((board) => {
             let field = context.virtualGame.field;
             let unknowns = field.flat().filter((cell) => cell.isUnknown);
 
-            if (context.isGuessingSolver(sweepResult.solver) && unknowns.length <= maxUnknowns) {
+            if (context.isGuessingSolver(sweepResult.solver) && unknowns.length <= MAX_BRUTE_FORCE_UNKNOWNS) {
                 checkPosition(field, board, unknowns, seed);
             }
 
@@ -85,8 +91,8 @@ function checkPosition(field, board, unknowns, seed) {
             let analysis = context.sweep(hypotheticalField, board.bombs, false, false, true).analysis;
 
             let count = Math.exp(analysis.logWeight);
-            let isCountOk = Math.abs(count - matching.length) <= 1e-6 * Math.max(1, matching.length);
-            let isSafetyOk = matching.length === 0 || Math.abs(analysis.bestSafety - expectedSafety) < 1e-9;
+            let isCountOk = Math.abs(count - matching.length) <= COUNT_RELATIVE_TOLERANCE * Math.max(1, matching.length);
+            let isSafetyOk = matching.length === 0 || Math.abs(analysis.bestSafety - expectedSafety) < SAFETY_TOLERANCE;
             checked += 1;
 
             if (!isCountOk || !isSafetyOk) {

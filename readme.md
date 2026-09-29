@@ -91,10 +91,13 @@ The solver itself is configured in the global object *solverConfig*:
 - **expert**: primary tuning target, **sizes**: other standard and custom sizes (up to 99x99), **stress**: robustness on extreme sizes and densities
 - `--compare <git revision or file>` runs an older *sweeper.js* on the same boards; win differences are paired, which removes most of the noise
 - `--set` overrides a *solverConfig* value, `--ablate` re-evaluates every feature listed in *bench/features.js* against the full configuration
-- The robustness gate fails on any error, NaN or a single step slower than 2 s
+- The robustness gate fails on any error, NaN or a single step slower than SLOW_STEP_TIME (2 s, in *bench/run.js*)
+- *Expected win %* counts a game that reaches a forced position (no unknown cell can give information anymore, so every play has the same chance) with that position's exact win chance instead of its coin flips: same expected value, less noise. *Forced games* is the share of games that reach one
 
 `node bench/verify-website.js` checks that the virtual game generates the same boards as the website code.
 
 `node bench/verify-analysis.js` checks the look-ahead's analysis of hypothetical boards against brute-force enumeration.
+
+`node bench/verify-forced.js` checks that forced positions cannot be played better than the solver does (exact optimal play over all bomb configurations) and reports how far the solver is from optimal in other small endgames.
 
 Evaluation results are logged in *bench/RESULTS.md*; state, findings and next steps are in *ROADMAP.md*.

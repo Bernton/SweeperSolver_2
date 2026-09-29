@@ -43,7 +43,7 @@ function createSolver(source, configOverrides = {}) {
 function playGame(context, board, seed) {
     let gameConfig = { width: board.width, height: board.height, bombAmount: board.bombs };
     let config = { isVirtualMode: true, virtualGameConfig: gameConfig };
-    let result = { won: false, guesses: 0, steps: 0, time: 0, maxStepTime: 0, error: null };
+    let result = { won: false, guesses: 0, steps: 0, time: 0, maxStepTime: 0, error: null, forcedWinChance: null };
 
     try {
         context.setWindowSeedRng();
@@ -72,6 +72,10 @@ function playGame(context, board, seed) {
 
             if (context.isGuessingSolver(sweepResult.solver)) {
                 result.guesses += 1;
+
+                if (result.forcedWinChance === null) {
+                    result.forcedWinChance = getForcedWinChance(context, board.bombs);
+                }
             }
 
             context.executeInteractions(sweepResult.interactions, true, true);
@@ -82,6 +86,40 @@ function playGame(context, board, seed) {
     }
 
     return result;
+}
+
+// A position is forced when no unknown cell can give information: each would show the same number in every bomb
+// configuration where it is safe. Nothing can be learned anymore, so any play wins at most one configuration, and
+// revealing the safe cells of one wins with 1 / number of configurations, which is optimal (the solver reaches it,
+// bench/RESULTS.md entry 13). Returns that win chance, or null if the position is not forced.
+function getForcedWinChance(context, bombs) {
+    let field = context.virtualGame.field;
+    let unknowns = field.flat().filter((cell) => cell.isUnknown);
+
+    if (unknowns.length === 0) {
+        return null;
+    }
+
+    for (let cell of unknowns) {
+        let flaggedNeighbors = cell.neighbors.filter((neighbor) => neighbor.isFlagged).length;
+        let hiddenNeighbors = cell.neighbors.filter((neighbor) => neighbor.isFlagged || neighbor.isUnknown).length;
+        let possibleValues = 0;
+
+        for (let value = flaggedNeighbors; value <= hiddenNeighbors; value++) {
+            let hypotheticalField = field.map((row) => row.slice(0));
+            hypotheticalField[cell.y][cell.x] = { x: cell.x, y: cell.y, value: value, isDigit: true, isHidden: false, isUnknown: false, isFlagged: false, isRevealedBomb: false };
+
+            if (context.sweep(hypotheticalField, bombs, false, false, true).analysis.logWeight > -Infinity) {
+                possibleValues += 1;
+
+                if (possibleValues > 1) {
+                    return null;
+                }
+            }
+        }
+    }
+
+    return Math.exp(-context.sweep(field, bombs, false, false, true).analysis.logWeight);
 }
 
 module.exports = { createSolver, mulberry32 };

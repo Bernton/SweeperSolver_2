@@ -20,8 +20,11 @@ const path = require("path");
 const { execFileSync } = require("child_process");
 const { Worker, isMainThread, parentPort, workerData } = require("worker_threads");
 
-const MAX_GAME_TIME = 60000;
-const SLOW_STEP_TIME = 2000;
+const MAX_GAME_TIME = 60000; // ms; a game taking longer counts as hung (its worker is restarted)
+const SLOW_STEP_TIME = 2000; // ms; the robustness gate fails on any slower single step
+// Work per worker task, in board cells times games: small enough to balance the threads and to detect a hung game
+// early, large enough to keep the message overhead low
+const CELLS_PER_TASK = 50000;
 
 if (isMainThread) {
     main();
@@ -161,7 +164,7 @@ function runAll(variants, presets, options) {
 
     variants.forEach((variant, variantIndex) => {
         presets.forEach((preset, presetIndex) => {
-            let chunkSize = Math.max(1, Math.floor(50000 / (preset.width * preset.height)));
+            let chunkSize = Math.max(1, Math.floor(CELLS_PER_TASK / (preset.width * preset.height)));
 
             for (let offset = 0; offset < preset.games; offset += chunkSize) {
                 tasks.push({
@@ -247,8 +250,8 @@ function printResults(variants, presets, results) {
     let gatePassed = true;
     let errorLines = [];
 
-    console.log("\n| Preset | Variant | Win % | Δ win vs variant " + referenceIndex + " (paired) | Games played differently | Guesses/game | ms/game | Slowest step ms | Errors |");
-    console.log("|---|---|---|---|---|---|---|---|---|");
+    console.log("\n| Preset | Variant | Win % | Δ win vs variant " + referenceIndex + " (paired) | Expected win % | Δ expected (paired) | Forced games | Games played differently | Guesses/game | ms/game | Slowest step ms | Errors |");
+    console.log("|---|---|---|---|---|---|---|---|---|---|---|---|");
 
     presets.forEach((preset, presetIndex) => {
         variants.forEach((variant, variantIndex) => {
@@ -259,12 +262,18 @@ function printResults(variants, presets, results) {
             let winSe = Math.sqrt((winRate * (1 - winRate)) / n);
             let errors = games.filter((g) => g.error);
             let slowestStep = Math.max(...games.map((g) => g.maxStepTime));
+            let expectedWins = games.map(getExpectedWin);
+            let expectedWinRate = sum(expectedWins, (e) => e) / n;
+            let expectedWinSe = Math.sqrt(sum(expectedWins, (e) => (e - expectedWinRate) ** 2) / Math.max(1, n - 1) / n);
+            let forcedGames = count(games, (g) => g.forcedWinChance !== null);
             let delta = "";
+            let expectedDelta = "";
             let playedDifferently = "";
 
             if (variantIndex !== referenceIndex) {
                 let referenceGames = results[referenceIndex][presetIndex];
                 delta = formatPairedDelta(referenceGames, games);
+                expectedDelta = formatPairedMeanDelta(referenceGames.map(getExpectedWin), expectedWins);
                 playedDifferently = count(games, (g, i) => g.won !== referenceGames[i].won || g.guesses !== referenceGames[i].guesses || g.steps !== referenceGames[i].steps);
             }
 
@@ -277,6 +286,9 @@ function printResults(variants, presets, results) {
                 " | " + variantIndex +
                 " | " + (winRate * 100).toFixed(2) + " ± " + (winSe * 100).toFixed(2) +
                 " | " + delta +
+                " | " + (expectedWinRate * 100).toFixed(2) + " ± " + (expectedWinSe * 100).toFixed(2) +
+                " | " + expectedDelta +
+                " | " + ((forcedGames / n) * 100).toFixed(1) + "%" +
                 " | " + playedDifferently +
                 " | " + (sum(games, (g) => g.guesses) / n).toFixed(2) +
                 " | " + (sum(games, (g) => g.time) / n).toFixed(1) +
@@ -316,6 +328,21 @@ function formatPairedDelta(referenceGames, games) {
 
     let delta = (onlyVariant - onlyReference) / n;
     let se = Math.sqrt(Math.max(0, onlyVariant + onlyReference - (onlyVariant - onlyReference) ** 2 / n)) / n;
+    let sigma = se > 0 ? delta / se : 0;
+    return (delta >= 0 ? "+" : "") + (delta * 100).toFixed(2) + " ± " + (se * 100).toFixed(2) + " (" + sigma.toFixed(1) + "σ)";
+}
+
+// Expected win: a game that reached a forced position (no information possible anymore) counts with that position's
+// exact win chance instead of the outcome of its coin flips. Same expected value as the win rate, less noise.
+function getExpectedWin(game) {
+    return game.forcedWinChance !== null ? game.forcedWinChance : game.won ? 1 : 0;
+}
+
+function formatPairedMeanDelta(referenceValues, values) {
+    let n = values.length;
+    let differences = values.map((value, i) => value - referenceValues[i]);
+    let delta = sum(differences, (d) => d) / n;
+    let se = Math.sqrt(sum(differences, (d) => (d - delta) ** 2) / Math.max(1, n - 1) / n);
     let sigma = se > 0 ? delta / se : 0;
     return (delta >= 0 ? "+" : "") + (delta * 100).toFixed(2) + " ± " + (se * 100).toFixed(2) + " (" + sigma.toFixed(1) + "σ)";
 }

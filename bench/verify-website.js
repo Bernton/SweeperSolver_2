@@ -9,7 +9,12 @@ const path = require("path");
 const vm = require("vm");
 const { mulberry32 } = require("./sandbox");
 
-const boardsPerCase = Number(process.argv[2] || 300);
+const DEFAULT_BOARDS_PER_CASE = 300;
+// Boards above this many cells take long to generate and compare, so they are checked with fewer seeds
+const LARGE_BOARD_CELLS = 2000;
+const LARGE_BOARD_SEED_DIVISOR = 20;
+
+const boardsPerCase = Number(process.argv[2] || DEFAULT_BOARDS_PER_CASE);
 
 // Port of the website code: 1-based grid with a hidden border ring, bomb <=> value < 0
 function siteBombs(random, B, a, m, Y, ae) {
@@ -25,6 +30,7 @@ function siteBombs(random, B, a, m, Y, ae) {
             }
         }
     };
+    // The website marks a bomb by lowering the cell value by 10 (neighbors add up to at most 8)
     let plantMine = (cell) => {
         value[cell[0]][cell[1]] -= 10;
         addAround(cell, 1);
@@ -108,7 +114,7 @@ cases.forEach((board) => {
         [Math.min(2, board.width - 1), Math.min(2, board.height - 1)],
         [Math.floor(board.width / 2), 0]
     ];
-    let boards = board.width * board.height > 2000 ? Math.ceil(boardsPerCase / 20) : boardsPerCase;
+    let boards = board.width * board.height > LARGE_BOARD_CELLS ? Math.ceil(boardsPerCase / LARGE_BOARD_SEED_DIVISOR) : boardsPerCase;
     let mismatches = 0;
 
     clicks.forEach(([x, y]) => {

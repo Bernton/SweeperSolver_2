@@ -376,3 +376,36 @@ Robustness gate (current version: no errors, no step over 2000 ms): PASS
 Look-ahead (+1.24, 4.7σ) and first click offset 2 vs center (+1.17, 2.8σ) confirmed. Offset 3 vs 2 undecided (+0.11 ± 0.33 on tuning seeds, +0.61 ± 0.32 here).
 Absolute expert win rate on held-out seeds 52.44% vs 53.52% on the tuning seeds: report about 53%.
 
+## 13. Forced positions: definition, proof, check, expected win metric
+
+A position is forced when no unknown cell can give information: every unknown cell would show the same number in all bomb configurations where it is safe.
+Then (1) no reveal ever gives information (the property holds for every subset of configurations), so every strategy is a fixed order of cells;
+(2) a fixed order wins configuration C exactly when all safe cells of C come before all its bombs; two different configurations with the same bomb count cannot both satisfy that (a cell x bomb in C1, safe in C2 and a cell y the other way round would need y before x and x before y);
+(3) so the optimum is the probability of the most likely configuration (1 / number of configurations, all configurations of the unknown cells being equally likely), reached by revealing the safe cells of one configuration.
+
+`bench/verify-forced.js` (exact optimal play by search over all adaptive strategies, positions with up to MAX_SEARCHED_UNKNOWNS = 12 unknown cells, 1500 expert games):
+
+- Forced positions: 501, optimum exactly one configuration in all of them, the solver reaches it in all of them (PASS).
+- Other positions: 287, mean optimal 47.12% vs solver 44.29%; the solver is below optimal in 68 of them, 8.13 wins in 1500 games (about +0.5 points): the ceiling for an exact endgame search on these positions.
+
+Loss breakdown (2000 expert games, forced check limited to 30 unknown cells at the time): 34.7% of losses are forced (98% of them 50/50s). Non-forced losses by unknown cells left: more than 60: 16.9% of games (average bomb probability of those guesses 10.5%), 17-60: 6.5% (14.6%), 16 or fewer: 6.6% (30.3%).
+
+Benchmark: *Expected win %* counts games that reach a forced position with its exact win chance instead of the coin flips (same expected value). The forced check needs no size limit: it stops at the first cell that can show two values, so it costs about 1 s per 3000 expert games. Expert ablation with it:
+
+| Preset | Variant | Win % | Δ win vs variant 0 (paired) | Expected win % | Δ expected (paired) | Forced games | Games played differently | Guesses/game | ms/game | Slowest step ms | Errors |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| expert 30x16/99 | 0 | 53.52 ± 0.50 |  | 52.81 ± 0.42 |  | 29.6% |  | 2.54 | 12.6 | 322 | 0 |
+|  | 1 | 52.05 ± 0.50 | -1.47 ± 0.43 (-3.4σ) | 51.37 ± 0.42 | -1.43 ± 0.38 (-3.8σ) | 32.9% | 9914 | 2.54 | 14.2 | 383 | 0 |
+|  | 2 | 51.35 ± 0.50 | -2.17 ± 0.32 (-6.8σ) | 50.72 ± 0.43 | -2.09 ± 0.28 (-7.4σ) | 29.2% | 8665 | 2.77 | 14.1 | 361 | 0 |
+|  | 3 | 53.63 ± 0.50 | +0.11 ± 0.33 (0.3σ) | 53.00 ± 0.42 | +0.19 ± 0.29 (0.7σ) | 31.2% | 8662 | 2.48 | 12.2 | 585 | 0 |
+|  | 4 | 52.29 ± 0.50 | -1.23 ± 0.27 (-4.6σ) | 51.73 ± 0.43 | -1.07 ± 0.25 (-4.4σ) | 29.5% | 3870 | 2.68 | 5.8 | 54 | 0 |
+|  | 5 | 53.38 ± 0.50 | -0.14 ± 0.14 (-1.0σ) | 52.76 ± 0.42 | -0.04 ± 0.13 (-0.3σ) | 29.7% | 1161 | 2.50 | 13.0 | 425 | 0 |
+|  | 6 | 53.34 ± 0.50 | -0.18 ± 0.15 (-1.2σ) | 52.74 ± 0.42 | -0.06 ± 0.13 (-0.5σ) | 29.8% | 1234 | 2.50 | 13.9 | 344 | 0 |
+|  | 7 | 53.52 ± 0.50 | +0.00 ± 0.00 (0.0σ) | 52.81 ± 0.42 | +0.00 ± 0.00 (0.0σ) | 29.6% | 8 | 2.54 | 11.2 | 167 | 0 |
+|  | 8 | 53.52 ± 0.50 | +0.00 ± 0.00 (0.0σ) | 52.81 ± 0.42 | +0.00 ± 0.00 (0.0σ) | 29.6% | 1 | 2.54 | 11.4 | 784 | 0 |
+
+Robustness gate (current version: no errors, no step over 2000 ms): PASS
+
+Paired standard errors shrink by 8-13% (about 20-25% fewer games for the same precision); the full run took 298 s (earlier ablations 255-290 s).
+The seeds 1-10000 were lucky in forced coin flips: expected win 52.81% vs 53.52% counted, which explains most of the gap to the held-out seeds (52.44%, entry 12).
+
