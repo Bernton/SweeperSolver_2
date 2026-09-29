@@ -3,7 +3,7 @@ Designed to work on: [http://minesweeperonline.com/](http://minesweeperonline.co
 
 For use beyond keybinds minimal technical skill in javascript is needed.
 
-Finds all certain results and if a guess has to be made, it calculates the probability of candidates being bombs and picks the guess most likely to survive both itself and the next move. Reaches a win rating of about 53% on expert with an average of roughly 2.5 guesses per game (10,000 seeded games in the headless benchmark: 53.5% on the seeds used for tuning, 52.4% on held-out seeds). Works on all board sizes the website offers (up to 99x99).
+Finds all certain results and if a guess has to be made, it calculates the probability of candidates being bombs and picks the guess most likely to survive both itself and the next move; in endgames it searches all bomb configurations exactly for the guess with the best chance to win. Reaches a win rating of about 53.5% on expert with an average of roughly 2.5 guesses per game (10,000 seeded games in the headless benchmark, see below). Works on all board sizes the website offers (up to 99x99).
 
 ## How to setup:
 
@@ -65,9 +65,10 @@ When no certain move is left, **[e]** / **[shift+e]** show:
 
 - **bomb probability**: exact chance that the cell is a bomb, given everything on the board
 - **survive it and next move**: exact chance to survive this guess and the safest move after it (averaged over the numbers the cell can show); computed for the cells with the lowest bomb probability
+- **win chance with best play**: exact chance to win the game when guessing this cell and playing optimally afterwards; computed in endgames (see *endgameSearchMaxUnknowns*)
 - **evaluation**: the score the solver ranks guesses by (higher is better); its definition is printed in the *Evaluation:* line and changes as the solver's guess logic is improved
 
-The suggestion can be a cell with a slightly higher bomb probability when it is more likely to lead to a safe next move. *Cluster* marks cells that share all their neighboring digits (same bomb probability), *Outsider* a cell not next to any digit (the one most likely to open an area). **[w]** / **[shift+w]** print the guess they make in the same format.
+The suggestion can be a cell with a slightly higher bomb probability when it is more likely to lead to a safe next move. In an endgame where no unknown cell can give information anymore, a line *Forced: ...* says that the outcome is pure chance. *Cluster* marks cells that share all their neighboring digits (same bomb probability), *Outsider* a cell not next to any digit (the one most likely to open an area). **[w]** / **[shift+w]** print the guess they make in the same format.
 
 ## Settings / Configuration:
 All settings for the auto sweeper can be found within the global object *autoSweepConfig*.
@@ -81,7 +82,9 @@ The solver itself is configured in the global object *solverConfig*:
 
 **firstClickCornerOffset**: First click this many cells in from the top left corner (default 2, i.e. the third cell; *null* for the center)\
 **guessLookaheadCandidates**: How many of the safest cells are compared by their chance to survive the next move too (default 3; 0 to always guess the safest cell)\
-**guessLookaheadBudget**: Limit for this comparison in bomb combinations per guess, keeps large boards fast (default 20000; *null* for no limit)
+**guessLookaheadBudget**: Limit for this comparison in bomb combinations per guess, keeps large boards fast (default 20000; *null* for no limit)\
+**endgameSearchMaxUnknowns**: Exact search for the guess with the best chance to win when at most this many unknown cells are left (default 28, at most 30; 0 to switch it off)\
+**endgameSearchBudget**: Limit for this search in bomb configurations plus search states per guess; above it the look-ahead decides (default 20000)
 
 ## Headless benchmark (development):
 *bench/* plays seeded games headless in Node.js (no dependencies, no browser). It loads *sweeper.js* unchanged, so the script stays copy/pastable into the browser console. The virtual game places bombs exactly like minesweeperonline.com.

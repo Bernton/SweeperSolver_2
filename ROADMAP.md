@@ -4,13 +4,13 @@ State, review findings and ranked backlog. Measurements and history are in [benc
 
 ## Current state
 
-- **Expert (30x16/99, minesweeperonline.com rules): about 53% wins**, 2.56 guesses per game.
-  Tuning seeds 1-10000: 53.52% counted, 52.81% expected (forced coin flips at their exact chance: these seeds were
-  lucky there); held-out seeds 100001-110000: 52.44% counted.
+- **Expert (30x16/99, minesweeperonline.com rules): about 53.5% wins** (expected win: 53.62% on tuning seeds 1-10000,
+  53.33% on held-out seeds 100001-110000; expected win counts forced coin flips at their exact chance).
   Reference: JSMinesweeper reports 54.3% for the same rules (first click opens an area, start at (3,3)).
 - Solver: rule stages [0] trivial and [1] suffocations, then the exact full check [3] with exact bomb probabilities.
   Guesses: of the 3 cells with the lowest bomb probability, the one most likely to survive itself and the next move
-  (look-ahead, exact analysis of each value the cell can show). First click on the third cell from the top left corner.
+  (look-ahead, exact analysis of each value the cell can show); with up to 28 unknown cells left, the exact best guess
+  (search over all bomb configurations and strategies). First click on the third cell from the top left corner.
 - Works on all website sizes (up to 99x99, any bomb count); robustness gate passes (no errors, no step over 2 s).
 - `sweeper.js` stays a single copy/pastable script; the console output shows bomb probability, statistics and the
   evaluation for every candidate.
@@ -36,40 +36,32 @@ About 35% of all losses are forced (almost all 50/50s). The avoidable losses, by
 | 17-60 | 6.5% | 14.6% |
 | 16 or fewer (endgame) | 6.6% | 30.3% |
 
-Exact optimal play in small endgames (up to 12 unknown cells) would win about 0.5 points more than the solver
-(`bench/verify-forced.js`); the early game is the largest pool, but its ceiling is not measured yet.
+The exact endgame search (done, entry 14) made the solver optimal in all checked endgames and gained about 0.9 points.
+The early game is now clearly the largest avoidable pool, but its ceiling is not measured yet.
 
 ## Ranked backlog
 
 Impact = expected effect on the expert win rate or on trial time; each item is evaluated with the benchmark
 (paired, ablation) and confirmed on held-out seeds before it is adopted.
 
-### Next: exact endgame search (win rate)
+### Next: measure the early-game ceiling (win rate)
 
-When few unknown cells and bomb configurations are left, compute the exact win probability of every possible guess
-(expectimax over all configurations: guess, observe the value, continue with certain moves and further guesses) and play
-the best one. Replaces the one-move look-ahead there.
-
-- Why: measured ceiling of about +0.5 points for endgames up to 12 unknown cells (`bench/verify-forced.js`), likely
-  more with larger endgames; fixes the overfull 9x9/75 regression. Forced positions need no search (already optimal).
-  JSMinesweeper does the same ("brute force analysis").
-- Plan: (1) the exact search exists as a check (`bench/verify-forced.js`); turn it into a solver function working on
-  configuration sets; (2) integrate behind `solverConfig` with a named, deterministic size limit (unknown cells,
-  configurations), skip forced positions, ablate, confirm on held-out seeds, check the gate and step times.
-- Risk: exponential cost; needs a hard, deterministic limit and memoization of positions.
+The largest avoidable pool: guesses with more than 60 unknown cells lose 16.9% of games (average bomb probability
+10.5%). Before building anything, measure what better early guesses could gain, e.g. a deeper look-ahead (two or more
+moves, more candidates) on sampled early positions, compared by the benchmark's expected win.
 
 ### Win rate
 
-2. **Measure the early-game ceiling** (largest avoidable pool, 16.9% of games): e.g. deeper look-ahead for the first
-   guesses on sampled positions, to see what better early guesses could gain before building anything.
-3. **Evaluation blend**: combine survival with the next move with progress (chance the guess gives a certain safe move)
+2. **Evaluation blend**: combine survival with the next move with progress (chance the guess gives a certain safe move)
    and look further than one move for the top candidates. Unknown gain; JSMinesweeper's main difference besides the
    endgame.
-4. **More outside cells in the look-ahead**: only one cell away from the digits (the most likely opening) is considered
+3. **More outside cells in the look-ahead**: only one cell away from the digits (the most likely opening) is considered
    now; 6.8% of guesses are such cells.
-5. **First click offset 3 vs 2**: undecided (+0.11 ± 0.33 on tuning seeds, +0.61 ± 0.32 on held-out seeds); re-run with
+4. **First click offset 3 vs 2**: undecided (+0.11 ± 0.33 on tuning seeds, +0.61 ± 0.32 on held-out seeds); re-run with
    more seeds when the solver changes.
-6. Not worth it (measured): more look-ahead candidates (6 or 12 instead of 3; covers ties, no gain), dropping the
+5. **Overfull boards**: model the website's non-uniform placement around the first click when there are more bombs
+   than cells outside that area (bench/RESULTS.md entry 14); only matters on those boards.
+6. Done: exact endgame search (entry 14). Not worth it (measured): more look-ahead candidates (6 or 12 instead of 3; covers ties, no gain), dropping the
    look-ahead budget.
 
 ### Trial speed

@@ -23,8 +23,13 @@ let autoSweepConfig = {
 let solverConfig = {
     firstClickCornerOffset: 2, // null: first click in the center, n: n cells in from the top left corner (at most the center)
     guessLookaheadCandidates: 3, // 0: guess the safest cell, n: of the n safest cells guess the one most likely to survive the next move too
-    guessLookaheadBudget: 20000 // max bomb combinations the look-ahead enumerates per guess, keeps large boards fast (null: no limit)
+    guessLookaheadBudget: 20000, // max bomb combinations the look-ahead enumerates per guess, keeps large boards fast (null: no limit)
+    endgameSearchMaxUnknowns: 28, // exact search for the guess with the best win chance when at most this many unknown cells are left (0: off)
+    endgameSearchBudget: 20000 // max bomb configurations plus search states per guess; above it the look-ahead decides
 };
+
+// The endgame search keeps bomb configurations as bit masks of 32 bit integers, which safely hold this many cells
+const ENDGAME_MAX_MASK_BITS = 30;
 
 let autoSweepStats = { gameStats: [] };
 
@@ -1143,6 +1148,7 @@ function sweep(fieldToSweep, bombAmount, withGuessing = true, doLog = true, isAn
 
         let groupingCheckResults = [];
         let leastBombsCount = 0;
+        let endgameConfigurationAmount = null; // set when the endgame search chose the guess
 
         let checkAllCombinationsT0 = performance.now();
 
@@ -1975,6 +1981,18 @@ function sweep(fieldToSweep, bombAmount, withGuessing = true, doLog = true, isAn
         // The evaluation changes with the guess logic (keep getEvaluationDescription in line with it); the statistics
         // it is based on (bomb probability, survivalWithNextMove, ...) keep their meaning and are shown on their own.
         function chooseGuess(cellProbs, isPruned) {
+            let endgame = searchEndgameOfPosition();
+
+            if (endgame) {
+                endgameConfigurationAmount = endgame.configurationAmount;
+
+                if (endgame.isForced) {
+                    resultInfo.messages.push("Forced: no unknown cell can give information anymore, the outcome is pure chance whatever is played");
+                }
+
+                return chooseGuessByEndgame(cellProbs, endgame);
+            }
+
             if (solverConfig.guessLookaheadCandidates > 1) {
                 return chooseGuessByLookahead(cellProbs.slice(0, solverConfig.guessLookaheadCandidates), isPruned);
             }
@@ -1983,7 +2001,86 @@ function sweep(fieldToSweep, bombAmount, withGuessing = true, doLog = true, isAn
             return cellProbs[0];
         }
 
+        // Exact endgame search on this position (see searchEndgame), or null when it is too large
+        function searchEndgameOfPosition() {
+            let unknownAmount = cellCounts.hidden - cellCounts.flagged;
+
+            if (unknownAmount > Math.min(solverConfig.endgameSearchMaxUnknowns, ENDGAME_MAX_MASK_BITS)) {
+                return null;
+            }
+
+            let unknowns = [];
+            let indexOf = new Map();
+            applyToCells(field, (cell) => {
+                if (cell.isUnknown) {
+                    indexOf.set(cell, unknowns.length);
+                    unknowns.push(cell);
+                }
+            });
+
+            let maskOf = (cell) => cell.neighbors.reduce((mask, neighbor) => (indexOf.has(neighbor) ? mask | (1 << indexOf.get(neighbor)) : mask), 0);
+            let digits = [];
+            let digitsOfCells = unknowns.map(() => []);
+
+            applyToCells(field, (cell) => {
+                if (cell.isDigit && cell.unknownNeighborAmount > 0) {
+                    cell.neighbors.forEach((neighbor) => {
+                        if (indexOf.has(neighbor)) {
+                            digitsOfCells[indexOf.get(neighbor)].push(digits.length);
+                        }
+                    });
+
+                    digits.push({ mask: maskOf(cell), bombs: cell.value - cell.flaggedNeighborAmount });
+                }
+            });
+
+            let neighborMasks = unknowns.map(maskOf);
+            let flaggedNeighbors = unknowns.map((cell) => cell.flaggedNeighborAmount);
+            let result = searchEndgame(unknowns.length, totalFlagsLeft, digits, digitsOfCells, neighborMasks, flaggedNeighbors, solverConfig.endgameSearchBudget);
+            return result ? Object.assign(result, { unknowns: unknowns }) : null;
+        }
+
+        // Guesses the cell with the best win chance; ties go to the lower bomb probability. Cells away from the digits
+        // that are not candidates yet (only one outsider is) are added to the candidates when chosen.
+        function chooseGuessByEndgame(cellProbs, endgame) {
+            let options = endgame.unknowns.map((cell, i) => {
+                let cellProb = cellProbs.find((c) => c.candidate.x === cell.x && c.candidate.y === cell.y);
+                let fraction = endgame.bombCounts[i] / endgame.configurationAmount;
+                let winChance = endgame.winCounts[i] / endgame.configurationAmount;
+
+                if (cellProb) {
+                    cellProb.winChance = winChance;
+                    cellProb.evaluation = winChance;
+                }
+
+                return { cell: cell, cellProb: cellProb, fraction: fraction, winChance: winChance };
+            });
+
+            options.sort((a, b) => a.fraction - b.fraction);
+            let best = options.reduce((a, b) => (b.winChance > a.winChance ? b : a));
+
+            if (!best.cellProb) {
+                best.cellProb = {
+                    percentage: (best.fraction * 100).toFixed(2) + "%",
+                    fraction: best.fraction,
+                    candidate: best.cell,
+                    isOutsider: true,
+                    winChance: best.winChance,
+                    evaluation: best.winChance
+                };
+
+                cellProbs.push(best.cellProb);
+                cellProbs.sort((a, b) => a.fraction - b.fraction);
+            }
+
+            return best.cellProb;
+        }
+
         function getEvaluationDescription(cellProbs) {
+            if (endgameConfigurationAmount !== null) {
+                return "chance to win the game with best play, exact search over all " + endgameConfigurationAmount + " bomb configurations (higher is better)";
+            }
+
             if (solverConfig.guessLookaheadCandidates > 1) {
                 let amount = Math.min(solverConfig.guessLookaheadCandidates, cellProbs.length);
                 return "chance to survive the guess and the next move, for the " + amount + " cells with the lowest bomb probability (higher is better)";
@@ -1999,6 +2096,10 @@ function sweep(fieldToSweep, bombAmount, withGuessing = true, doLog = true, isAn
 
             if (cellProb.survivalWithNextMove !== undefined) {
                 message += ", survive it and next move " + (cellProb.survivalWithNextMove * 100).toFixed(2) + "%";
+            }
+
+            if (cellProb.winChance !== undefined) {
+                message += ", win chance with best play " + (cellProb.winChance * 100).toFixed(2) + "%";
             }
 
             if (cellProb.evaluation !== undefined) {
@@ -2324,6 +2425,159 @@ function simulate(element, eventName, mouseButton) {
 
         return destination;
     }
+}
+
+// Exact endgame search: for every unknown cell the number of bomb configurations won when revealing it and playing
+// on optimally (search over all adaptive strategies; all configurations are equally likely). Cells are bit indices;
+// digits: { mask of unknown neighbors, bombs they still need }. A game is won once all safe cells are revealed.
+// Returns null when configurations plus search states exceed the budget.
+function searchEndgame(unknownAmount, bombsLeft, digits, digitsOfCells, neighborMasks, flaggedNeighbors, budget) {
+    let configurations = enumerateEndgameConfigurations(unknownAmount, bombsLeft, digits, digitsOfCells, budget);
+
+    if (!configurations) {
+        return null;
+    }
+
+    let allCells = unknownAmount === 0 ? 0 : 2 ** unknownAmount - 1;
+    let workLeft = budget - configurations.length;
+    let memo = new Map();
+    let isWon = (configuration, revealed) => (~configuration & allCells & ~revealed) === 0;
+    let valueOf = (i, configuration) => flaggedNeighbors[i] + bitCount(configuration & neighborMasks[i]);
+
+    let winsWhenRevealing = (i, candidates, revealed) => {
+        let nextRevealed = revealed | (1 << i);
+        let groups = new Map();
+        let wins = 0;
+
+        candidates.forEach((configuration) => {
+            if (!(configuration & (1 << i))) {
+                let value = valueOf(i, configuration);
+                groups.has(value) ? groups.get(value).push(configuration) : groups.set(value, [configuration]);
+            }
+        });
+
+        groups.forEach((group) => {
+            let remaining = group.filter((configuration) => !isWon(configuration, nextRevealed));
+            wins += group.length - remaining.length + winsFrom(remaining, nextRevealed);
+        });
+
+        return wins;
+    };
+
+    let winsFrom = (candidates, revealed) => {
+        if (candidates.length === 0) {
+            return 0;
+        }
+
+        let key = revealed + "|" + candidates.join(",");
+
+        if (!memo.has(key)) {
+            if (--workLeft < 0) {
+                throw endgameBudgetExceeded;
+            }
+
+            // A cell that is safe in every configuration costs nothing and only adds information, so revealing it
+            // first is optimal: then only that cell needs to be searched
+            let bombCells = candidates.reduce((a, b) => a | b, 0);
+            let certainSafe = allCells & ~revealed & ~bombCells;
+            let best = 0;
+
+            if (certainSafe) {
+                best = winsWhenRevealing(31 - Math.clz32(certainSafe & -certainSafe), candidates, revealed);
+            } else {
+                for (let i = 0; i < unknownAmount; i++) {
+                    if (!(revealed & (1 << i)) && candidates.some((configuration) => !(configuration & (1 << i)))) {
+                        best = Math.max(best, winsWhenRevealing(i, candidates, revealed));
+                    }
+                }
+            }
+
+            memo.set(key, best);
+        }
+
+        return memo.get(key);
+    };
+
+    try {
+        let winCounts = [];
+        let bombCounts = [];
+        let isForced = true;
+
+        for (let i = 0; i < unknownAmount; i++) {
+            winCounts.push(winsWhenRevealing(i, configurations, 0));
+            bombCounts.push(configurations.filter((configuration) => configuration & (1 << i)).length);
+            let values = new Set(configurations.filter((configuration) => !(configuration & (1 << i))).map((configuration) => valueOf(i, configuration)));
+            isForced = isForced && values.size <= 1;
+        }
+
+        // Forced: no cell can give information anymore, so the outcome is pure chance whatever is played
+        return { configurationAmount: configurations.length, winCounts: winCounts, bombCounts: bombCounts, isForced: isForced };
+    } catch (e) {
+        if (e === endgameBudgetExceeded) {
+            return null;
+        }
+
+        throw e;
+    }
+}
+
+const endgameBudgetExceeded = new Error("Endgame search budget exceeded");
+
+// All bomb placements on the unknown cells that fit the digits, as bit masks (null above the budget)
+function enumerateEndgameConfigurations(unknownAmount, bombsLeft, digits, digitsOfCells, budget) {
+    let configurations = [];
+    let bombsNeeded = digits.map((digit) => digit.bombs);
+    let cellsOpen = digits.map((digit) => bitCount(digit.mask));
+
+    let assign = (i, configuration, bombs) => {
+        if (configurations.length > budget) {
+            return;
+        }
+
+        if (i === unknownAmount) {
+            configurations.push(configuration);
+            return;
+        }
+
+        [false, true].forEach((isBomb) => {
+            let newBombs = bombs + (isBomb ? 1 : 0);
+
+            if (newBombs > bombsLeft || bombsLeft - newBombs > unknownAmount - i - 1) {
+                return;
+            }
+
+            let fits = true;
+
+            digitsOfCells[i].forEach((digit) => {
+                cellsOpen[digit] -= 1;
+                bombsNeeded[digit] -= isBomb ? 1 : 0;
+                fits = fits && bombsNeeded[digit] >= 0 && bombsNeeded[digit] <= cellsOpen[digit];
+            });
+
+            if (fits) {
+                assign(i + 1, isBomb ? configuration | (1 << i) : configuration, newBombs);
+            }
+
+            digitsOfCells[i].forEach((digit) => {
+                cellsOpen[digit] += 1;
+                bombsNeeded[digit] += isBomb ? 1 : 0;
+            });
+        });
+    };
+
+    assign(0, 0, 0);
+    return configurations.length > budget ? null : configurations;
+}
+
+function bitCount(value) {
+    let count = 0;
+
+    while (value) {
+        value &= value - 1;
+        count += 1;
+    }
+
+    return count;
 }
 
 function logSumExp(values) {

@@ -7,5 +7,7 @@
 module.exports = [
     { key: "firstClickCornerOffset", values: [null, 1, 2, 3] },
     { key: "guessLookaheadCandidates", values: [0, 3, 6, 12] },
-    { key: "guessLookaheadBudget", values: [5000, 20000, 100000] }
+    { key: "guessLookaheadBudget", values: [5000, 20000, 100000] },
+    { key: "endgameSearchMaxUnknowns", values: [0, 12, 16, 20, 24, 28] },
+    { key: "endgameSearchBudget", values: [20000, 100000, 500000, 2000000] }
 ];

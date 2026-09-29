@@ -10,6 +10,7 @@
 //   --compare <rev|path>   also run sweeper.js from a git revision (e.g. HEAD, HEAD~2) or a file, as reference
 //   --set <key>=<json>     override a solverConfig value for the current version (repeatable)
 //   --ablate               also run every alternative value of every feature in bench/features.js
+//   --ablate-key <key>     same, for one feature only
 //   --threads <n>          worker threads (default: number of CPU cores)
 //
 // Win differences between variants are paired (same seeds = same boards), which removes most of the noise.
@@ -78,7 +79,7 @@ async function main() {
     if (options.ablate) {
         let currentConfig = createSolver(currentSource, options.set).getConfig();
 
-        features.forEach((feature) => {
+        features.filter((feature) => !options.ablateKey || feature.key === options.ablateKey).forEach((feature) => {
             feature.values.forEach((value) => {
                 if (JSON.stringify(value) !== JSON.stringify(currentConfig[feature.key])) {
                     let config = { ...options.set, [feature.key]: value };
@@ -99,7 +100,7 @@ async function main() {
 }
 
 function parseArgs(args) {
-    let options = { suite: "expert", scale: 1, games: null, seed: 1, only: null, compare: null, set: {}, ablate: false, threads: os.cpus().length };
+    let options = { suite: "expert", scale: 1, games: null, seed: 1, only: null, compare: null, set: {}, ablate: false, ablateKey: null, threads: os.cpus().length };
 
     for (let i = 0; i < args.length; i++) {
         let arg = args[i];
@@ -119,6 +120,9 @@ function parseArgs(args) {
             options.set[key] = JSON.parse(value.join("="));
         } else if (arg === "--ablate") {
             options.ablate = true;
+        } else if (arg === "--ablate-key") {
+            options.ablate = true;
+            options.ablateKey = args[++i];
         } else if (arg === "--threads") {
             options.threads = Number(args[++i]);
         } else if (!arg.startsWith("--")) {
