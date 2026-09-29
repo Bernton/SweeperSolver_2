@@ -223,3 +223,9 @@ Live mode reads squares with getElementById/className/style.display instead of j
   Solver time per game: expert 86.8 -> 22.6 ms, 99x99/1960 12432 -> 2354 ms. Clicks (website code) cost 15 ms (expert) and 4 s (99x99) per game, as the website snapshots its whole grid on every click.
 - Keyboard flow ([s], [d], [i]) works with the pasted script.
 
+## 8. Speed: fixed cell shapes, state counts during the copy (no decision changes)
+
+Virtual and solver cells get all properties up front (same hidden class, faster property access). Hidden/flag/revealed-bomb counts are taken while copying the board instead of three extra scans per step.
+0 games played differently on all suites; sweep time per game vs entry 7: expert 8.8 -> 5.4 ms, 50x50 114 -> 53 ms, 99x99/1960 584 -> 272 ms (4 threads, --scale 0.2).
+Live (website code in Chromium): identical 200 expert games, solver time 22.6 -> 16.5 ms per game. Full `all` suite: 21 s at --scale 0.2.
+

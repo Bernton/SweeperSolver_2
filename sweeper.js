@@ -488,13 +488,19 @@ function restartVirtualGame(config) {
     function createVirtualField(virtualGame) {
         let field = [];
         let createVirtualCell = (x, y) => {
+            // All properties up front, so every cell has the same shape (faster property access)
             return {
                 x: x,
                 y: y,
                 isHidden: true,
                 isUnknown: true,
+                isFlagged: false,
+                isDigit: false,
                 isRevealedBomb: false,
-                value: -1
+                isBomb: false,
+                bombValue: 0,
+                value: -1,
+                neighbors: null
             };
         };
 
@@ -654,6 +660,7 @@ function sweep(fieldToSweep, bombAmount, withGuessing = true, doLog = true) {
     let interactions = [];
     let revealedCells = new Set();
     let flaggedCells = new Set();
+    let cellCounts = { cells: 0, hidden: 0, flagged: 0, revealedBombs: 0 };
     let checkResult = checkForAndAddInteractions();
 
     let sweepResult = {
@@ -667,15 +674,15 @@ function sweep(fieldToSweep, bombAmount, withGuessing = true, doLog = true) {
     function checkForAndAddInteractions() {
         let field = copyAndInitializeField(fieldToSweep);
 
-        if (checkBombDeath(field)) {
+        if (checkBombDeath()) {
             return onBombDeath();
         }
 
-        if (checkStart(field)) {
+        if (checkStart()) {
             return onStart(field);
         }
 
-        if (checkSolved(field)) {
+        if (checkSolved()) {
             return onSolved();
         }
 
@@ -957,9 +964,11 @@ function sweep(fieldToSweep, bombAmount, withGuessing = true, doLog = true) {
         return revealsFound;
     }
 
-    // Copies the cell states into the reused solver field and resets what a step may have set on its cells
+    // Copies the cell states into the reused solver field, resets what a step may have set on its cells
+    // and counts the cell states needed for the game state checks
     function copyAndInitializeField(fieldToSweep) {
         let field = getSolverField(fieldToSweep);
+        cellCounts = { cells: 0, hidden: 0, flagged: 0, revealedBombs: 0 };
 
         for (let y = 0; y < field.length; y++) {
             let rowToSweep = fieldToSweep[y];
@@ -976,6 +985,11 @@ function sweep(fieldToSweep, bombAmount, withGuessing = true, doLog = true) {
                 cell.isFlagged = cellToSweep.isFlagged;
                 cell.isUnknown = cellToSweep.isUnknown;
                 cell.isBorderCell = false;
+
+                cellCounts.cells += 1;
+                cellCounts.hidden += cell.isHidden ? 1 : 0;
+                cellCounts.flagged += cell.isFlagged ? 1 : 0;
+                cellCounts.revealedBombs += cell.isRevealedBomb ? 1 : 0;
             }
         }
 
@@ -996,7 +1010,28 @@ function sweep(fieldToSweep, bombAmount, withGuessing = true, doLog = true) {
 
     // Neighbor order is the same as in applyToNeighbors (x offset outer, y offset inner)
     function createSolverField(fieldToSweep, width, height) {
-        let field = fieldToSweep.map((row) => row.map((cell) => ({ x: cell.x, y: cell.y })));
+        // All properties up front, so every cell has the same shape (faster property access)
+        let field = fieldToSweep.map((row) =>
+            row.map((cell) => ({
+                x: cell.x,
+                y: cell.y,
+                referenceCell: null,
+                value: -1,
+                isDigit: false,
+                isRevealedBomb: false,
+                isHidden: false,
+                isFlagged: false,
+                isUnknown: false,
+                isBorderCell: false,
+                neighbors: null,
+                neighborAmount: 0,
+                unknownNeighborAmount: 0,
+                flaggedNeighborAmount: 0,
+                hiddenNeighborAmount: 0,
+                borderCellNeighborAmount: 0,
+                probabilityOfZero: 0
+            }))
+        );
 
         for (let y = 0; y < height; y++) {
             for (let x = 0; x < width; x++) {
@@ -1812,50 +1847,25 @@ function sweep(fieldToSweep, bombAmount, withGuessing = true, doLog = true) {
     }
 
     function getFlagsLeft(field) {
-        let flagsAmount = getFlagsAmount(field);
+        let flagsAmount = getFlagsAmount();
         let flagsLeft = bombAmount - flagsAmount;
         return flagsLeft;
     }
 
-    function getFlagsAmount(field) {
-        let flagsAmount = 0;
-
-        applyToCells(field, (cell) => {
-            if (cell.isFlagged) {
-                flagsAmount += 1;
-            }
-        });
-
-        return flagsAmount;
+    function getFlagsAmount() {
+        return cellCounts.flagged;
     }
 
-    function checkBombDeath(field) {
-        return !trueForAllCells(field, (cell) => !cell.isRevealedBomb);
+    function checkBombDeath() {
+        return cellCounts.revealedBombs > 0;
     }
 
-    function checkStart(field) {
-        return trueForAllCells(field, (cell) => cell.isHidden);
+    function checkStart() {
+        return cellCounts.hidden === cellCounts.cells;
     }
 
-    function checkSolved(field) {
-        return getHiddenAmount(field) === bombAmount;
-    }
-
-    function getHiddenAmount(field) {
-        return field.reduce((rowA, rowB) => rowA + rowB.reduce((cellA, cellB) => cellA + (cellB.isHidden ? 1 : 0), 0), 0);
-    }
-
-    function trueForAllCells(field, condition) {
-        let trueForAll = true;
-
-        applyToCells(field, (cell) => {
-            if (!condition(cell)) {
-                trueForAll = false;
-                return "break";
-            }
-        });
-
-        return trueForAll;
+    function checkSolved() {
+        return cellCounts.hidden === bombAmount;
     }
 
     function getBinaryAssignments(valueAmount, amountOfOnes) {
