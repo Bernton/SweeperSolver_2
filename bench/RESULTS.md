@@ -524,3 +524,27 @@ Other sizes, offset 3 vs 2 (expected win, seeds 1-... and 100001-...):
 
 Offset 3 is an expert-specific gain (worse on beginner and intermediate), so it is set for expert only: solverConfig.boardSettings holds values per board ("width x height / bombs"), and the solver reads all settings through them (getBoardSettings). Only expert games change (all other presets play identically). Ablation: feature boardSettings in bench/features.js.
 
+## 18. Progress in the look-ahead's evaluation (tried, not adopted)
+
+Experiment: evaluation = (1 - bomb probability) × (expected next safety + guessProgressWeight × chance of a certain next move), the chance taken from the same exact analysis (best next safety exactly 1). Expert, 10000 games, vs weight 0 (current, which already counts a certain next move as safety 1):
+
+- Variant 0: current
+- Variant 1: current with guessProgressWeight=0.05
+- Variant 2: current with guessProgressWeight=0.1
+- Variant 3: current with guessProgressWeight=0.2
+- Variant 4: current with guessProgressWeight=0.5
+- Variant 5: current with guessProgressWeight=1
+
+| Preset | Variant | Win % | Δ win vs variant 0 (paired) | Expected win % | Δ expected (paired) | Forced games | Games played differently | Guesses/game | ms/game | Slowest step ms | Errors |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| expert 30x16/99 | 0 | 54.51 ± 0.50 |  | 53.86 ± 0.42 |  | 29.8% |  | 2.45 | 24.8 | 451 | 0 |
+|  | 1 | 54.42 ± 0.50 | -0.09 ± 0.14 (-0.7σ) | 53.82 ± 0.42 | -0.04 ± 0.12 (-0.4σ) | 29.7% | 1278 | 2.37 | 24.8 | 495 | 0 |
+|  | 2 | 54.18 ± 0.50 | -0.33 ± 0.16 (-2.0σ) | 53.58 ± 0.42 | -0.28 ± 0.15 (-1.8σ) | 29.6% | 1719 | 2.34 | 24.9 | 386 | 0 |
+|  | 3 | 54.07 ± 0.50 | -0.44 ± 0.19 (-2.3σ) | 53.50 ± 0.42 | -0.36 ± 0.18 (-2.0σ) | 29.4% | 2180 | 2.31 | 23.8 | 423 | 0 |
+|  | 4 | 53.92 ± 0.50 | -0.59 ± 0.22 (-2.7σ) | 53.36 ± 0.42 | -0.50 ± 0.20 (-2.5σ) | 29.4% | 2552 | 2.29 | 23.6 | 865 | 0 |
+|  | 5 | 53.98 ± 0.50 | -0.53 ± 0.23 (-2.3σ) | 53.42 ± 0.42 | -0.44 ± 0.21 (-2.1σ) | 29.3% | 2677 | 2.27 | 23.9 | 621 | 0 |
+
+Robustness gate (current version: no errors, no step over SLOW_STEP_TIME = 2000 ms): PASS
+
+Fewer guesses per game (2.45 -> 2.27) but lower win rates at every weight (up to -0.50 ± 0.20 expected): rewarding progress trades survival for cells that unlock certain moves. Code removed (recoverable from this entry's description; the patch was not committed).
+

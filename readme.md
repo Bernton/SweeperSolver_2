@@ -3,7 +3,7 @@ Designed to work on: [http://minesweeperonline.com/](http://minesweeperonline.co
 
 For use beyond keybinds minimal technical skill in javascript is needed.
 
-Finds all certain results and if a guess has to be made, it calculates the probability of candidates being bombs and picks the guess most likely to survive both itself and the next move; in endgames it searches all bomb configurations exactly for the guess with the best chance to win. Reaches a win rating of about 53.5% on expert with an average of roughly 2.5 guesses per game (10,000 seeded games in the headless benchmark, see below). Works on all board sizes the website offers (up to 99x99).
+Finds all certain results and if a guess has to be made, it calculates the probability of candidates being bombs and picks the guess most likely to survive both itself and the next move; in endgames it searches all bomb configurations exactly for the guess with the best chance to win. Reaches a win rating of about 53.7% on expert with an average of roughly 2.5 guesses per game (10,000 seeded games in the headless benchmark, see below). Works on all board sizes the website offers (up to 99x99).
 
 ## How to setup:
 

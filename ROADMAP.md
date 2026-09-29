@@ -4,8 +4,8 @@ State, review findings and ranked backlog. Measurements and history are in [benc
 
 ## Current state
 
-- **Expert (30x16/99, minesweeperonline.com rules): about 53.5% wins** (expected win: 53.62% on tuning seeds 1-10000,
-  53.33% on held-out seeds 100001-110000; expected win counts forced coin flips at their exact chance).
+- **Expert (30x16/99, minesweeperonline.com rules): about 53.7% wins** (expected win: 53.86% on tuning seeds 1-10000,
+  53.74% on fresh seeds 300001-340000; expected win counts forced coin flips at their exact chance).
   Reference: JSMinesweeper reports 54.3% for the same rules (first click opens an area, start at (3,3)).
 - Solver: rule stages [0] trivial and [1] suffocations, then the exact full check [3] with exact bomb probabilities.
   Guesses: of the 3 cells with the lowest bomb probability, the one most likely to survive itself and the next move
@@ -52,9 +52,8 @@ Impact = expected effect on the expert win rate or on trial time; each item is e
 
 2. Done: early-game ceiling measurement (entry 15; the rollout tool was removed, recoverable from commit b22cc61): no headroom found among the cells with
    the lowest bomb probability.
-3. **Evaluation blend**: combine survival with the next move with progress (chance the guess gives a certain safe move)
-   and look further than one move for the top candidates. Unknown gain; JSMinesweeper's main difference besides the
-   endgame.
+3. Done (negative, entry 18): progress (chance of a certain next move) in the look-ahead's evaluation lowers the win
+   rate at every weight tried.
 4. Done: first click offset 3 on expert only (entry 17, via `solverConfig.boardSettings`); 2 stays the general default
    (3 is worse on beginner and intermediate).
 5. **Overfull boards**: model the website's non-uniform placement around the first click when there are more bombs
