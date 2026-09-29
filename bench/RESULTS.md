@@ -548,3 +548,47 @@ Robustness gate (current version: no errors, no step over SLOW_STEP_TIME = 2000 
 
 Fewer guesses per game (2.45 -> 2.27) but lower win rates at every weight (up to -0.50 ± 0.20 expected): rewarding progress trades survival for cells that unlock certain moves. Code removed (recoverable from this entry's description; the patch was not committed).
 
+## 19. Review of 2026-09-29: measurements of the six independent reviews
+
+Findings and the resulting plan are in ROADMAP.md (IDs L, W, B, S, C). Measurements taken by the reviews (scripts in the
+session's scratch space, not in the repository):
+
+- **Website use** (website's game code in headless Chromium, script pasted as in the console): 1000 expert games won
+  55.3% (553/1000). Auto sweeper: about 2.8 games per second, about 80% of the time spent waiting for browser timers;
+  solving plus clicking would allow about 19 per second. 99x99/1960: about 7.5 s per game, board reading about 5.6 ms
+  per step.
+- **Inconsistent positions**: with one wrong flag placed next to a digit after step 5, 180 of 300 expert games died on
+  non-guess steps and 2 crashed in `onIsolatedUnknowns`.
+- **JSMinesweeper (David Hill) on the same boards** (seeds 300001-310000, start (3,3)): 54.42% vs 53.56% counted,
+  paired **+0.86 ± 0.32**; on 6000 of its own boards 54.67 ± 0.64. 42% of games differ at the first guess, which
+  accounts for about +66 of the +86 wins, mostly among cells with equal bomb probability and equal evaluation (58% of
+  first guesses have exact ties among the evaluated candidates). Endgames: +11 ± 18 (noise).
+- **Tie-breaking** (score all cells tied at the lowest bomb probability, up to 12; break exact ties by the expected
+  number of certain safe cells after the guess): +0.23 ± 0.10 (seeds 300001-310000), +0.24 ± 0.10 (400001-410000)
+  expected win; parts alone: tie-break +0.08 ± 0.07, all tied cells +0.08 ± 0.05. Not yet adopted (ROADMAP W1).
+- Blending best and second-best next-move safety 4:1 (Hill's default): +0.06 ± 0.10 (10000 games). Not adopted.
+- Exact endgame search up to 45 unknown cells (wider masks): +0.05 ± 0.04 expected (3000 games, 8 games differ),
+  +21% time. Not adopted.
+- Re-checks of adopted features on unused seeds: endgame limit 28 vs 20: +0.17 ± 0.09 (500001-504000); expert first
+  click offset 3 vs 4: +1.56 ± 0.45 (600001-604000); look-ahead on vs off with the endgame search on: +0.88 ± 0.43
+  (700001-703000).
+- **Expected win metric**: brute-force cross-check of `getForcedWinChance` on 800 games (positions with up to 18
+  unknown cells): 505 positions, 256 forced, 0 mismatches.
+- **Speed prototypes** (decision-preserving, strict check of every step's interactions): together 0.695x solver time
+  on expert (seeds 2001-3000) and 0.627x on 99x99/1960; `bench/run.js all --scale 0.2`: 0 games played differently.
+- **Timing variance**: the same 400 games at 1, 3 and 4 threads: 19.9, 32.4 and 55-58 ms/game, slowest step 94, 170 and
+  627-735 ms; within one ablation run identical games measured 54.8 vs 24.8 ms/game depending on when they ran.
+
+### Seed ledger
+
+Expert seed blocks used so far (use the next unused block for confirmations; decide in one look):
+
+| Seeds | Used for |
+|---|---|
+| 1-10000 | tuning, all entries |
+| 100001-110000 | held-out checks (entries 12, 14, 17 sizes) |
+| 200001-220000, 300001-340000 | first click offset decision (entry 17); 300001-340000 also the fresh-seed headline 53.74% |
+| 300001-310000, 400001-410000 | review: JSMinesweeper comparison, tie-breaking |
+| 500001-504000, 600001-604000, 700001-703000 | review: re-checks of adopted features |
+| **800001 and up** | unused |
+
