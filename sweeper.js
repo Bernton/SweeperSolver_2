@@ -1193,8 +1193,8 @@ function sweep(fieldToSweep, bombAmount, withGuessing = true, doLog = true) {
         }
 
         function getValidCombinationsForNeighbors(neighbors, flagsLeft) {
-            let validCombinations = [];
             let combination = Array(neighbors.length).fill(0);
+            let validCombinations = flagsLeft === 0 ? [combination.slice(0)] : []; // the loop below starts after all zeros
             let lastI = combination.length - 1;
 
             while (true) {

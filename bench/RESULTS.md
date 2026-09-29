@@ -229,3 +229,8 @@ Virtual and solver cells get all properties up front (same hidden class, faster 
 0 games played differently on all suites; sweep time per game vs entry 7: expert 8.8 -> 5.4 ms, 50x50 114 -> 53 ms, 99x99/1960 584 -> 272 ms (4 threads, --scale 0.2).
 Live (website code in Chromium): identical 200 expert games, solver time 22.6 -> 16.5 ms per game. Full `all` suite: 21 s at --scale 0.2.
 
+## 9. Fix: digit constraint with no bombs left had no valid combination
+
+getValidCombinationsForNeighbors skipped the all-zero combination, so a digit whose bombs are all flagged made its grouping impossible.
+Normal play never reached it (the trivial rules resolve such digits first); the look-ahead analysis (entry 10) does. 0 games played differently on all suites.
+
