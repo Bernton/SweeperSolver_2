@@ -603,26 +603,27 @@ function sweepPage(withGuessing = true, doLog = true, config = null, stats = nul
             let row = [];
 
             while (true) {
-                let jDiv = $("#" + (y + 1) + "_" + (x + 1));
+                // The website hides the squares around the board with an inline style
+                let div = document.getElementById(y + 1 + "_" + (x + 1));
 
-                if (jDiv.length < 1 || jDiv.css("display") === "none") {
+                if (!div || div.style.display === "none") {
                     break;
                 }
 
-                let jDivClass = jDiv.attr("class");
-                let cell = { div: jDiv[0], x: x, y: y };
+                let divClass = div.className;
+                let cell = { div: div, x: x, y: y };
 
-                if (jDivClass.substr(0, openClass.length) === openClass) {
-                    let number = jDivClass.substr(openClass.length);
+                if (divClass.substr(0, openClass.length) === openClass) {
+                    let number = divClass.substr(openClass.length);
                     cell.value = Number(number);
                     cell.isDigit = cell.value > 0;
-                } else if (jDivClass === bombRevealedClass || jDivClass === bombDeathClass) {
+                } else if (divClass === bombRevealedClass || divClass === bombDeathClass) {
                     cell.isRevealedBomb = true;
                 } else {
                     cell.isHidden = true;
                     cell.value = -1;
 
-                    if (jDivClass === flagClass) {
+                    if (divClass === flagClass) {
                         cell.isFlagged = true;
                     } else {
                         cell.isUnknown = true;
@@ -646,8 +647,13 @@ function sweepPage(withGuessing = true, doLog = true, config = null, stats = nul
     }
 }
 
+// The solver's copy of the board with its neighbor lists, reused between steps while the board size stays the same
+let solverField = null;
+
 function sweep(fieldToSweep, bombAmount, withGuessing = true, doLog = true) {
     let interactions = [];
+    let revealedCells = new Set();
+    let flaggedCells = new Set();
     let checkResult = checkForAndAddInteractions();
 
     let sweepResult = {
@@ -951,70 +957,90 @@ function sweep(fieldToSweep, bombAmount, withGuessing = true, doLog = true) {
         return revealsFound;
     }
 
+    // Copies the cell states into the reused solver field and resets what a step may have set on its cells
     function copyAndInitializeField(fieldToSweep) {
-        let field = fieldToSweep.map((rowToSweep) => {
-            let row = rowToSweep.map((cellToSweep) => {
-                return {
-                    referenceCell: cellToSweep.referenceCell ?? cellToSweep,
-                    x: cellToSweep.x,
-                    y: cellToSweep.y,
-                    value: cellToSweep.value,
-                    isDigit: cellToSweep.isDigit,
-                    isRevealedBomb: cellToSweep.isRevealedBomb,
-                    isHidden: cellToSweep.isHidden,
-                    isFlagged: cellToSweep.isFlagged,
-                    isUnknown: cellToSweep.isUnknown
-                };
-            });
+        let field = getSolverField(fieldToSweep);
 
-            return row;
-        });
+        for (let y = 0; y < field.length; y++) {
+            let rowToSweep = fieldToSweep[y];
+            let row = field[y];
 
-        setCellNeighborInfo(field);
+            for (let x = 0; x < row.length; x++) {
+                let cellToSweep = rowToSweep[x];
+                let cell = row[x];
+                cell.referenceCell = cellToSweep.referenceCell ?? cellToSweep;
+                cell.value = cellToSweep.value;
+                cell.isDigit = cellToSweep.isDigit;
+                cell.isRevealedBomb = cellToSweep.isRevealedBomb;
+                cell.isHidden = cellToSweep.isHidden;
+                cell.isFlagged = cellToSweep.isFlagged;
+                cell.isUnknown = cellToSweep.isUnknown;
+                cell.isBorderCell = false;
+            }
+        }
+
+        setCellNeighborCounts(field);
         return field;
     }
 
-    // Runs for every cell on every step, so plain loops instead of applyToCells/applyToNeighbors.
-    // Neighbor order is the same as in applyToNeighbors (x offset outer, y offset inner).
-    function setCellNeighborInfo(field) {
-        let height = field.length;
+    function getSolverField(fieldToSweep) {
+        let height = fieldToSweep.length;
+        let width = height > 0 ? fieldToSweep[0].length : 0;
+
+        if (!solverField || solverField.length !== height || (height > 0 && solverField[0].length !== width)) {
+            solverField = createSolverField(fieldToSweep, width, height);
+        }
+
+        return solverField;
+    }
+
+    // Neighbor order is the same as in applyToNeighbors (x offset outer, y offset inner)
+    function createSolverField(fieldToSweep, width, height) {
+        let field = fieldToSweep.map((row) => row.map((cell) => ({ x: cell.x, y: cell.y })));
 
         for (let y = 0; y < height; y++) {
-            let width = field[y].length;
-
             for (let x = 0; x < width; x++) {
-                let cell = field[y][x];
                 let neighbors = [];
-                let unknownNeighborAmount = 0;
-                let flaggedNeighborAmount = 0;
 
                 for (let neighborX = x - 1; neighborX <= x + 1; neighborX++) {
-                    if (neighborX < 0 || neighborX >= width) {
-                        continue;
-                    }
-
                     for (let neighborY = y - 1; neighborY <= y + 1; neighborY++) {
-                        if (neighborY < 0 || neighborY >= height || (neighborX === x && neighborY === y)) {
-                            continue;
+                        let isInside = neighborX >= 0 && neighborX < width && neighborY >= 0 && neighborY < height;
+
+                        if (isInside && !(neighborX === x && neighborY === y)) {
+                            neighbors.push(field[neighborY][neighborX]);
                         }
-
-                        let neighborCell = field[neighborY][neighborX];
-
-                        if (neighborCell.isUnknown) {
-                            unknownNeighborAmount += 1;
-                        } else if (neighborCell.isFlagged) {
-                            flaggedNeighborAmount += 1;
-                        }
-
-                        neighbors.push(neighborCell);
                     }
                 }
 
-                cell.neighbors = neighbors;
+                field[y][x].neighbors = neighbors;
+                field[y][x].neighborAmount = neighbors.length;
+            }
+        }
+
+        return field;
+    }
+
+    function setCellNeighborCounts(field) {
+        for (let y = 0; y < field.length; y++) {
+            let row = field[y];
+
+            for (let x = 0; x < row.length; x++) {
+                let cell = row[x];
+                let neighbors = cell.neighbors;
+                let unknownNeighborAmount = 0;
+                let flaggedNeighborAmount = 0;
+
+                for (let i = 0; i < neighbors.length; i++) {
+                    if (neighbors[i].isUnknown) {
+                        unknownNeighborAmount += 1;
+                    } else if (neighbors[i].isFlagged) {
+                        flaggedNeighborAmount += 1;
+                    }
+                }
+
                 cell.unknownNeighborAmount = unknownNeighborAmount;
                 cell.flaggedNeighborAmount = flaggedNeighborAmount;
                 cell.hiddenNeighborAmount = unknownNeighborAmount + flaggedNeighborAmount;
-                cell.neighborAmount = neighbors.length;
             }
         }
     }
@@ -2087,9 +2113,10 @@ function sweep(fieldToSweep, bombAmount, withGuessing = true, doLog = true) {
     }
 
     function addInteraction(referenceCell, isFlag) {
-        let duplicate = interactions.find((c) => c.cell === referenceCell && c.isFlag === isFlag);
+        let interactedCells = isFlag ? flaggedCells : revealedCells;
 
-        if (!duplicate) {
+        if (!interactedCells.has(referenceCell)) {
+            interactedCells.add(referenceCell);
             interactions.push({ cell: referenceCell, isFlag: isFlag });
         }
     }

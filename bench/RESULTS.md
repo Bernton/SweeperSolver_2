@@ -213,3 +213,13 @@ Robustness gate (current version: no errors, no step over 2000 ms): PASS
 
 Full `all` suite: 86 s on 4 threads (entry 1: 336 s).
 
+## 7. Speed: reuse the solver's board copy, read the live board without jQuery (no decision changes)
+
+The solver's copy of the board and its neighbor lists are built once per board size and reused; each step only copies cell states and recounts neighbors.
+Live mode reads squares with getElementById/className/style.display instead of jQuery; duplicate interaction checks use Sets.
+
+- Headless, all suites (--scale 0.2 --compare HEAD): 0 games played differently; sweep time per game expert 12.8 -> 10.0 ms, 50x50 155 -> 98 ms, 99x99/1960 674 -> 538 ms, 99x99 90% 35 -> 9 ms.
+- Live, website code (as pasted from the browser) in headless Chromium, seeded, sweeper.js injected like a console paste: identical games (expert: 200 games, 102 wins, 14272 steps each).
+  Solver time per game: expert 86.8 -> 22.6 ms, 99x99/1960 12432 -> 2354 ms. Clicks (website code) cost 15 ms (expert) and 4 s (99x99) per game, as the website snapshots its whole grid on every click.
+- Keyboard flow ([s], [d], [i]) works with the pasted script.
+
