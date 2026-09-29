@@ -785,7 +785,7 @@ function sweep(fieldToSweep, bombAmount, withGuessing = true, doLog = true, isAn
         } else {
             let cell = outsideUnknowns[0];
             let percentage = ((flagsLeft / outsideUnknowns.length) * 100).toFixed(2) + "%";
-            let cellInfo = "(" + (cell.y + 1) + "_" + (cell.x + 1) + ") " + percentage + " bomb, same for every unknown cell";
+            let cellInfo = "(" + (cell.y + 1) + "_" + (cell.x + 1) + ") bomb probability " + percentage + ", same for every unknown cell";
             let element = cell.referenceCell.div ? cell.referenceCell.div : cell.referenceCell;
 
             if (withGuessing) {
@@ -1866,11 +1866,12 @@ function sweep(fieldToSweep, bombAmount, withGuessing = true, doLog = true, isAn
                     break;
                 }
 
-                cellProb.lookaheadScore = (1 - cellProb.fraction) * expectedNextSafety;
+                cellProb.survivalWithNextMove = (1 - cellProb.fraction) * expectedNextSafety;
+                cellProb.evaluation = cellProb.survivalWithNextMove;
 
-                if (cellProb.lookaheadScore > bestScore) {
+                if (cellProb.evaluation > bestScore) {
                     bestCellProb = cellProb;
-                    bestScore = cellProb.lookaheadScore;
+                    bestScore = cellProb.evaluation;
                 }
             }
 
@@ -1970,18 +1971,17 @@ function sweep(fieldToSweep, bombAmount, withGuessing = true, doLog = true, isAn
                 let message = "Reveal " + formatCellProb(guess);
 
                 if (guess.fraction > cellProbs[0].fraction) {
-                    message += " (safest is " + formatCellProb(cellProbs[0]) + ")";
+                    message += " instead of the lowest bomb probability cell " + formatCellProb(cellProbs[0]);
                 }
 
                 resultInfo.messages.push([message, getCellElement(guess)]);
+                resultInfo.messages.push("Evaluation: " + getEvaluationDescription(cellProbs));
                 revealCell(guess.candidate);
             } else {
-                let lookaheadAmount = Math.min(solverConfig.guessLookaheadCandidates, cellProbs.length);
                 resultInfo.messages.push("No certain cell found");
                 resultInfo.messages.push(["Suggested guess: " + formatCellProb(guess), getCellElement(guess)]);
-                resultInfo.messages.push(
-                    "Candidates by bomb chance" + (lookaheadAmount > 1 ? " (for the " + lookaheadAmount + " safest also the chance to survive it and the next move)" : "") + ":"
-                );
+                resultInfo.messages.push("Evaluation: " + getEvaluationDescription(cellProbs));
+                resultInfo.messages.push("Candidates by bomb probability:");
 
                 let counter = 1;
                 let placing = 1;
@@ -2004,21 +2004,38 @@ function sweep(fieldToSweep, bombAmount, withGuessing = true, doLog = true, isAn
             }
         }
 
+        // Sets cellProb.evaluation (higher is better) for the cells the guess logic evaluates and returns the guess.
+        // The evaluation changes with the guess logic (keep getEvaluationDescription in line with it); the statistics
+        // it is based on (bomb probability, survivalWithNextMove, ...) keep their meaning and are shown on their own.
         function chooseGuess(cellProbs, isPruned) {
             if (solverConfig.guessLookaheadCandidates > 1) {
                 return chooseGuessByLookahead(cellProbs.slice(0, solverConfig.guessLookaheadCandidates), isPruned);
             }
 
+            cellProbs.forEach((cellProb) => (cellProb.evaluation = 1 - cellProb.fraction));
             return cellProbs[0];
+        }
+
+        function getEvaluationDescription(cellProbs) {
+            if (solverConfig.guessLookaheadCandidates > 1) {
+                let amount = Math.min(solverConfig.guessLookaheadCandidates, cellProbs.length);
+                return "chance to survive the guess and the next move, for the " + amount + " cells with the lowest bomb probability (higher is better)";
+            }
+
+            return "chance to survive the guess (higher is better)";
         }
 
         // (row_column) as in the ids of the website's squares
         function formatCellProb(cellProb) {
             let cell = cellProb.candidate;
-            let message = "(" + (cell.y + 1) + "_" + (cell.x + 1) + ") " + cellProb.percentage + " bomb";
+            let message = "(" + (cell.y + 1) + "_" + (cell.x + 1) + ") bomb probability " + cellProb.percentage;
 
-            if (cellProb.lookaheadScore !== undefined) {
-                message += ", " + (cellProb.lookaheadScore * 100).toFixed(2) + "% to survive it and the next move";
+            if (cellProb.survivalWithNextMove !== undefined) {
+                message += ", survive it and next move " + (cellProb.survivalWithNextMove * 100).toFixed(2) + "%";
+            }
+
+            if (cellProb.evaluation !== undefined) {
+                message += ", evaluation " + (cellProb.evaluation * 100).toFixed(2) + "%";
             }
 
             if (cellProb.isOutsider) {

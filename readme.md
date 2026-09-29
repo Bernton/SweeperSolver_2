@@ -53,15 +53,21 @@ When no certain move is left, **[e]** / **[shift+e]** show:
 
 ```
 -> [3s] No certain cell found
--> [3s] Suggested guess: (12_6) 6.02% bomb, 90.47% to survive it and the next move <div id="12_6">
--> [3s] Candidates by bomb chance (for the 3 safest also the chance to survive it and the next move):
--> [3s] #1 (12_5) 5.81% bomb, 89.15% to survive it and the next move <div id="12_5">
--> [3s] #2 (12_6) 6.02% bomb, 90.47% to survive it and the next move  <- suggested <div id="12_6">
--> [3s] #3 (1_17) 10.75% bomb, 89.25% to survive it and the next move <div id="1_17">
--> [3s] #4 ...
+-> [3s] Suggested guess: (12_6) bomb probability 6.02%, survive it and next move 90.47%, evaluation 90.47% <div id="12_6">
+-> [3s] Evaluation: chance to survive the guess and the next move, for the 3 cells with the lowest bomb probability (higher is better)
+-> [3s] Candidates by bomb probability:
+-> [3s] #1 (12_5) bomb probability 5.81%, survive it and next move 89.15%, evaluation 89.15% <div id="12_5">
+-> [3s] #2 (12_6) bomb probability 6.02%, survive it and next move 90.47%, evaluation 90.47%  <- suggested <div id="12_6">
+-> [3s] #3 (1_17) bomb probability 10.75%, survive it and next move 89.25%, evaluation 89.25% <div id="1_17">
+-> [3s] #3 (4_17) bomb probability 10.75% <div id="4_17">
+-> [3s] ...
 ```
 
-The suggestion can be a slightly riskier cell than the safest one when it is more likely to lead to a safe next move. *Cluster* marks cells that share all their neighboring digits (same chance), *Outsider* a cell not next to any digit (the one most likely to open an area). **[w]** / **[shift+w]** print the guess they make in the same format.
+- **bomb probability**: exact chance that the cell is a bomb, given everything on the board
+- **survive it and next move**: exact chance to survive this guess and the safest move after it (averaged over the numbers the cell can show); computed for the cells with the lowest bomb probability
+- **evaluation**: the score the solver ranks guesses by (higher is better); its definition is printed in the *Evaluation:* line and changes as the solver's guess logic is improved
+
+The suggestion can be a cell with a slightly higher bomb probability when it is more likely to lead to a safe next move. *Cluster* marks cells that share all their neighboring digits (same bomb probability), *Outsider* a cell not next to any digit (the one most likely to open an area). **[w]** / **[shift+w]** print the guess they make in the same format.
 
 ## Settings / Configuration:
 All settings for the auto sweeper can be found within the global object *autoSweepConfig*.
