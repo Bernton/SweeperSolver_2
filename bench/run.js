@@ -73,6 +73,10 @@ async function main() {
 
     if (options.only) {
         presets = presets.filter((preset) => preset.name.includes(options.only));
+
+        if (presets.length === 0) {
+            throw new Error("No preset of suite " + options.suite + " contains " + JSON.stringify(options.only));
+        }
     }
 
     presets = presets.map((preset) => ({ ...preset, games: options.games ?? Math.max(1, Math.round(preset.games * options.scale)) }));
@@ -80,6 +84,7 @@ async function main() {
     let currentSource = fs.readFileSync(path.join(repoRoot, "sweeper.js"), "utf8");
     let defaultConfig = createSolver(currentSource).getConfig();
     let currentOverrides = applyToAllBoards(options.set, defaultConfig);
+    createSolver(currentSource, currentOverrides); // throws here on an unknown key, not in every worker
     let variants = [];
 
     if (options.compare) {
@@ -104,7 +109,7 @@ async function main() {
             feature.values.forEach((value) => {
                 if (hasBoardValues || JSON.stringify(value) !== JSON.stringify(currentConfig[feature.key])) {
                     let config = applyToAllBoards({ ...options.set, [feature.key]: value }, defaultConfig);
-                    variants.push({ label: "current with " + feature.key + "=" + JSON.stringify(value), source: currentSource, config: config, baseIndex: currentIndex });
+                    variants.push({ label: "current" + formatConfig(options.set) + " with " + feature.key + "=" + JSON.stringify(value), source: currentSource, config: config, baseIndex: currentIndex });
                 }
             });
         });
@@ -135,7 +140,7 @@ function parseArgs(args) {
         };
 
         if (arg === "--scale") {
-            options.scale = parseNumber(arg, value(), (n) => n > 0, "a number above 0");
+            options.scale = parseNumber(arg, value(), (n) => n > 0 && Number.isFinite(n), "a finite number above 0");
         } else if (arg === "--games") {
             options.games = parseNumber(arg, value(), (n) => Number.isInteger(n) && n >= 1, "a whole number of at least 1");
         } else if (arg === "--seed") {
@@ -186,17 +191,17 @@ function parseNumber(option, text, isValid, description) {
 }
 
 // A key set for all boards also replaces the board-specific values of that key (solverConfig.boardSettings), which
-// would otherwise hide it on those boards
+// would otherwise hide it on those boards. Board settings that are set explicitly are used as given.
 function applyToAllBoards(overrides, defaultConfig) {
-    let keys = Object.keys(overrides).filter((key) => key !== "boardSettings");
+    let keys = Object.keys(overrides);
 
-    if (keys.length === 0 || !defaultConfig.boardSettings) {
+    if (keys.length === 0 || keys.includes("boardSettings") || !defaultConfig.boardSettings) {
         return overrides;
     }
 
     let boardSettings = {};
 
-    Object.entries(overrides.boardSettings ?? defaultConfig.boardSettings).forEach(([board, values]) => {
+    Object.entries(defaultConfig.boardSettings).forEach(([board, values]) => {
         let remaining = Object.fromEntries(Object.entries(values).filter(([key]) => !keys.includes(key)));
 
         if (Object.keys(remaining).length > 0) {
@@ -265,15 +270,30 @@ function runAll(variants, presets, options) {
     let completed = 0;
 
     return new Promise((resolve, reject) => {
+        let workers = new Set();
+        let timers = new Set();
+        let isFailed = false;
+
+        // A worker that fails (e.g. the script throws while loading) ends the whole run
+        let fail = (error) => {
+            isFailed = true;
+            timers.forEach((timer) => clearTimeout(timer));
+            workers.forEach((worker) => worker.terminate());
+            reject(error);
+        };
+
         let startWorker = () => {
             let worker = new Worker(__filename, { workerData: { variants: workerVariants } });
+            workers.add(worker);
             let currentTask = null;
             let finishedGames = 0;
             let timer = null;
 
             let startTimer = () => {
                 clearTimeout(timer);
+                timers.delete(timer);
                 timer = setTimeout(onHungGame, MAX_GAME_TIME);
+                timers.add(timer);
             };
 
             // The hung game counts as an error; the task's remaining games go back to the queue for a new worker
@@ -296,10 +316,15 @@ function runAll(variants, presets, options) {
                     pending += 1;
                 }
 
-                finishTask();
+                timers.delete(timer);
                 worker.removeAllListeners();
                 worker.terminate();
-                startWorker();
+                workers.delete(worker);
+                finishTask();
+
+                if (queue.length > 0) {
+                    startWorker();
+                }
             };
 
             let next = () => {
@@ -308,6 +333,7 @@ function runAll(variants, presets, options) {
 
                 if (!currentTask) {
                     worker.terminate();
+                    workers.delete(worker);
                     return;
                 }
 
@@ -318,6 +344,7 @@ function runAll(variants, presets, options) {
             worker.on("message", (message) => {
                 if (message.isDone) {
                     clearTimeout(timer);
+                    timers.delete(timer);
                     finishTask();
                     next();
                 } else {
@@ -327,7 +354,11 @@ function runAll(variants, presets, options) {
                 }
             });
 
-            worker.on("error", reject);
+            worker.on("error", (error) => {
+                if (!isFailed) {
+                    fail(error);
+                }
+            });
             next();
         };
 
@@ -382,6 +413,10 @@ function replaySlowGames(variant, presets, variantResults, options) {
     });
 }
 
+function isOverfull(preset) {
+    return preset.bombs > preset.width * preset.height - FIRST_CLICK_AREA_CELLS;
+}
+
 function printResults(variants, presets, results, replayNotes) {
     let currentIndex = variants.findIndex((variant) => variant.isCurrent);
     let gatePassed = true;
@@ -394,7 +429,8 @@ function printResults(variants, presets, results, replayNotes) {
         variants.forEach((variant, variantIndex) => {
             let games = results[variantIndex][presetIndex];
             let n = games.length;
-            let isOverfull = preset.bombs > preset.width * preset.height - FIRST_CLICK_AREA_CELLS;
+            let isExpectedWinUnavailable = isOverfull(preset) || hasNoForcedCheck(games);
+            let isExpectedDeltaUnavailable = isExpectedWinUnavailable || (variant.baseIndex !== null && hasNoForcedCheck(results[variant.baseIndex][presetIndex]));
             let wins = count(games, (g) => g.won);
             let winRate = wins / n;
             let winSe = Math.sqrt((winRate * (1 - winRate)) / n);
@@ -411,7 +447,7 @@ function printResults(variants, presets, results, replayNotes) {
             if (variant.baseIndex !== null) {
                 let baseGames = results[variant.baseIndex][presetIndex];
                 delta = formatPairedDelta(baseGames, games);
-                expectedDelta = isOverfull ? "n/a" : formatPairedMeanDelta(baseGames.map(getExpectedWin), expectedWins);
+                expectedDelta = isExpectedDeltaUnavailable ? "n/a" : formatPairedMeanDelta(baseGames.map(getExpectedWin), expectedWins);
                 playedDifferently = count(games, (g, i) => g.won !== baseGames[i].won || g.guesses !== baseGames[i].guesses || g.steps !== baseGames[i].steps);
             }
 
@@ -424,7 +460,7 @@ function printResults(variants, presets, results, replayNotes) {
                 " | " + variantIndex +
                 " | " + (winRate * 100).toFixed(2) + " ± " + (winSe * 100).toFixed(2) +
                 " | " + delta +
-                " | " + (isOverfull ? "n/a" : (expectedWinRate * 100).toFixed(2) + " ± " + (expectedWinSe * 100).toFixed(2)) +
+                " | " + (isExpectedWinUnavailable ? "n/a" : (expectedWinRate * 100).toFixed(2) + " ± " + (expectedWinSe * 100).toFixed(2)) +
                 " | " + expectedDelta +
                 " | " + ((forcedGames / n) * 100).toFixed(1) + "%" +
                 " | " + playedDifferently +
@@ -447,11 +483,15 @@ function printResults(variants, presets, results, replayNotes) {
     }
 
     if (replayNotes.length > 0) {
-        console.log("\nSteps over SLOW_STEP_TIME in the current version (the gate uses the replayed time):\n" + replayNotes.join("\n"));
+        console.log("\nSteps over SLOW_STEP_TIME in the current version (replayed games: the gate uses the replayed time):\n" + replayNotes.join("\n"));
     }
 
-    if (presets.some((preset) => preset.bombs > preset.width * preset.height - FIRST_CLICK_AREA_CELLS)) {
-        console.log("\nExpected win n/a: more bombs than cells outside the first click's area, the website's placement is not uniform there");
+    if (presets.some(isOverfull)) {
+        console.log("\nExpected win n/a on boards with more bombs than cells outside the first click's area: the website's placement is not uniform there");
+    }
+
+    if (results.some((variantResults) => variantResults.some(hasNoForcedCheck))) {
+        console.log("\nExpected win n/a for versions without the analysis the forced check needs (older than commit ed131a8)");
     }
 
     console.log("\nRobustness gate (current version: no errors, no step over SLOW_STEP_TIME = " + SLOW_STEP_TIME + " ms): " + (gatePassed ? "PASS" : "FAIL"));
@@ -476,6 +516,10 @@ function formatPairedDelta(referenceGames, games) {
     let se = Math.sqrt(Math.max(0, onlyVariant + onlyReference - (onlyVariant - onlyReference) ** 2 / n)) / n;
     let sigma = se > 0 ? delta / se : 0;
     return (delta >= 0 ? "+" : "") + (delta * 100).toFixed(2) + " ± " + (se * 100).toFixed(2) + " (" + sigma.toFixed(1) + "σ)";
+}
+
+function hasNoForcedCheck(games) {
+    return games.some((game) => game.hasForcedCheck === false);
 }
 
 // Expected win: a game that reached a forced position (no information possible anymore) counts with that position's

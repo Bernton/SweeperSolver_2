@@ -34,7 +34,7 @@ Determines a single step and outputs the certain interactions to the console, or
  Stops the auto sweeper.
 
 format log game stats **[i]**:\
-Outputs the stats of the games played by the auto sweeper to the console: win rate (± one standard error), guesses, solver time and game time (wall clock).
+Outputs the stats of the games played by the auto sweeper to the console: win rate (± one standard error), guesses, solver time and game time (wall clock, without pauses).
 
 format log game stats with raw **[o]**:\
 Outputs the stats for the auto sweeper to the console with raw data included.
@@ -45,7 +45,7 @@ Resets the game stats for the auto sweeper.
 toggle log **[l]**:\
 Toggles if the auto sweeper should output its steps to the console.
 
-Holding **[w]** or **[e]** keeps stepping while the board changes. Keys are ignored while typing in a field of the page and together with Ctrl, Alt or Meta, so browser shortcuts stay untouched. Pasting the script again replaces the running version and keeps the game stats.
+Holding **[w]** or **[e]** keeps stepping while the board changes. Keys are ignored while typing in a text field of the page and together with Ctrl, Alt or Meta, so browser shortcuts stay untouched. Pasting the script again replaces the running version and keeps the game stats (when updating from a version before September 2026, reload the page first: its auto sweeper cannot be stopped by a newer paste).
 
 The functionality that is offered with keybinds and more can also be called directly in the console as functions.
 
@@ -93,7 +93,7 @@ The solver itself is configured in the global object *solverConfig*:
 **firstClickCornerOffset**: First click this many cells in from the top left corner (default 2, i.e. the third cell, and 3 on expert, see *boardSettings*; *null* for the center)\
 **guessLookaheadCandidates**: How many of the safest cells are compared by their chance to survive the next move too (default 3; 0 or 1 to always guess the safest cell)\
 **guessLookaheadBudget**: Limit for this comparison in bomb combinations per guess, keeps large boards fast (default 20000; *null* for no limit)\
-**endgameSearchMaxUnknowns**: Exact search for the guess with the best chance to win when at most this many unknown cells are left (default 28, at most 30; 0 to switch it off)\
+**endgameSearchMaxUnknowns**: Exact search for the guess with the best chance to win when at most this many unknown cells are left (default 28, at most ENDGAME_MAX_MASK_BITS = 30; 0 to switch it off)\
 **endgameSearchBudget**: Limit for this search in bomb configurations plus search states per guess; above it the look-ahead decides (default 20000; *null* for no limit)\
 **boardSettings**: Values that differ for specific boards, keyed by *"width x height / bombs"*, e.g. `"30x16/99": { firstClickCornerOffset: 3 }` for expert
 
@@ -105,10 +105,10 @@ The solver itself is configured in the global object *solverConfig*:
 - **expert**: primary tuning target, **sizes**: other standard and custom sizes (up to 99x99), **stress**: robustness on extreme sizes and densities
 - `--scale <factor>` multiplies the games of every preset (e.g. 0.1 for a quick run), `--games <n>` plays exactly n per preset, `--seed <n>` sets the first seed (default 1), `--only <text>` runs only presets whose name contains the text, `--threads <n>` sets the worker threads (default: all cores)
 - `--compare <git revision or file>` runs an older *sweeper.js* on the same boards; win differences are paired, which removes most of the noise
-- `--set key=json` overrides a *solverConfig* value (e.g. `--set guessLookaheadCandidates=6`, strings in quotes); `--ablate` re-evaluates every value of every feature listed in *bench/features.js* against the current version, `--ablate-key <key>` one feature. A value set this way applies to all boards: it also replaces that key's board-specific values in *boardSettings*
+- `--set key=json` overrides a *solverConfig* value (e.g. `--set guessLookaheadCandidates=6`, strings in quotes); `--ablate` re-evaluates every other value of every feature listed in *bench/features.js* (all values of a key with board-specific values) against the current version, `--ablate-key <key>` one feature. A value set this way applies to all boards: it also replaces that key's board-specific values in *boardSettings* (an explicitly set *boardSettings* is used as given)
 - Differences (Δ) are against the reference for the current version and against the current version for ablations; the variant list at the top names each base
-- The robustness gate fails on any error (including a game over MAX_GAME_TIME, 60 s) or a single step slower than SLOW_STEP_TIME (2 s, in *bench/run.js*). Games with a slower step are replayed alone first, so machine load does not fail the gate
-- *Expected win %* counts a game that reaches a forced position (no unknown cell can give information anymore, so every play has the same chance) with that position's exact win chance instead of its coin flips: same expected value, less noise. *Forced games* is the share of games that reach one. On boards with more bombs than cells outside the first click's 3x3 area it is *n/a*, as the website's placement is not uniform there
+- The robustness gate fails on any error (including a game over MAX_GAME_TIME, 60 s) or a single step slower than SLOW_STEP_TIME (2 s, in *bench/run.js*). Games with a slower step (up to MAX_REPLAYED_SLOW_GAMES = 20) are replayed alone first, so machine load does not fail the gate
+- *Expected win %* counts a game that reaches a forced position (no unknown cell can give information anymore, so every play has the same chance) with that position's exact win chance instead of its coin flips: same expected value, less noise. *Forced games* is the share of games that reach one. On boards with more bombs than cells outside the first click's 3x3 area it is *n/a*, as the website's placement is not uniform there; also for versions before the analysis mode (commit ed131a8), e.g. as *--compare* reference
 
 `node bench/verify-website.js` checks that the virtual game generates the same boards as the website code.
 

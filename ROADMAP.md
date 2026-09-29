@@ -48,7 +48,7 @@ the art) plus an own review; details and measurements in bench/RESULTS.md entry 
 ## Ranking of all findings
 
 All findings of the six reviews and the own review, collected in two passes (the second pass added L12, L13, B11,
-B12, C9, C10, S8, W7-W9). Reviews: **SC** solver correctness, **WU** website use, **BM** benchmark methodology,
+B12, C9, C10, S8, W7-W9; W10 and L14 were added later by the own review). Reviews: **SC** solver correctness, **WU** website use, **BM** benchmark methodology,
 **PF** performance, **CH** code health, **SA** state of the art, **OR** own review.
 
 **Priority = impact × confidence ÷ effort**, with impact high 3, medium-high 2.5, medium 2, low-medium 1.5, low 1,
@@ -95,27 +95,26 @@ usability, and the owner's rules (one copy/pastable script, no magic numbers).
 | 34 | L14 | Pasting the script a second time in Firefox is untested (Chrome allows redeclaring `let`) | low | medium | S | 0.8 | OR |
 | 34 | S5 | Benchmark forced check costs 8-9% of trial time | low-med | medium | S-M | 0.8 | PF |
 | 34 | S8 | Minor speed leftovers (settings copy per call, border cells built twice, closures) | low | medium | S | 0.8 | PF |
-| 36 | W2 | Paired JSMinesweeper harness to explain the remaining ~0.6 point gap | high | low | M | 0.75 | SA |
-| 37 | C4 | Move pure parts of `sweep()` to top-level functions in the same file | medium | high | L | 0.67 | CH |
-| 38 | B10 | Website fidelity: keep a snapshot and hash of the website's game code | low-med | medium | M | 0.6 | BM |
-| 38 | S6 | Work budget for the main combination search (never hang) | low-med | medium | M | 0.6 | PF, SC |
-| 40 | W5 | Overfull boards: check the website's bomb cap first | low | low | S | 0.5 | SC |
-| 40 | W6 | Isolated-unknowns path skips endgame search and look-ahead | tiny | high | S | 0.5 | SC |
-| 42 | W3 | Exact search triggered by few configurations (wider masks) | low-med | medium | L | 0.4 | SA, SC |
-| 42 | W4 | Avoid dead cells as guesses | low | medium | M | 0.4 | SA |
-| 44 | W7 | Derive the first click offset from board properties instead of one board key | low-med | low | M | 0.38 | BM |
-| 45 | S7 | Update only the affected grouping in hypotheticals (large boards) | low | medium | L | 0.27 | PF |
-| 46 | W8 | Early-game ceiling for cells away from the digits (rollouts) | low | low | M | 0.25 | SC |
-| 47 | W9 | Exact search of enclosed regions mid-game | tiny | medium | M | 0.2 | SA |
+| 38 | W2 | Paired JSMinesweeper harness to explain the remaining ~0.6 point gap | high | low | M | 0.75 | SA |
+| 39 | C4 | Move pure parts of `sweep()` to top-level functions in the same file | medium | high | L | 0.67 | CH |
+| 40 | B10 | Website fidelity: keep a snapshot and hash of the website's game code | low-med | medium | M | 0.6 | BM |
+| 40 | S6 | Work budget for the main combination search (never hang) | low-med | medium | M | 0.6 | PF, SC |
+| 42 | W5 | Overfull boards: check the website's bomb cap first | low | low | S | 0.5 | SC |
+| 42 | W6 | Isolated-unknowns path skips endgame search and look-ahead | tiny | high | S | 0.5 | SC |
+| 44 | W3 | Exact search triggered by few configurations (wider masks) | low-med | medium | L | 0.4 | SA, SC |
+| 44 | W4 | Avoid dead cells as guesses | low | medium | M | 0.4 | SA |
+| 46 | W7 | Derive the first click offset from board properties instead of one board key | low-med | low | M | 0.38 | BM |
+| 47 | S7 | Update only the affected grouping in hypotheticals (large boards) | low | medium | L | 0.27 | PF |
+| 48 | W8 | Early-game ceiling for cells away from the digits (rollouts) | low | low | M | 0.25 | SC |
+| 49 | W9 | Exact search of enclosed regions mid-game | tiny | medium | M | 0.2 | SA |
 | - | L11 | High scores: automated wins may be submitted as "cancel" | owner decision | | | | WU, OR |
 | - | C8 | Legacy browser virtual mode and `Math.seedrandom` in the pasted script | owner decision | | | | CH |
 
-**Execution order** (the ranking, adjusted for dependencies): (1) L1, L2, L3, L5, L4, L6: live-use bugs in one pass
-(done except L4, which waits for a check on the website); the bug fixes of entry 21 (B1, B3, B7, B9, B11, C3, C7, C9,
-L8, L10, L12) are done as well;
-(2) B1, B2, B3, B12: benchmark integrity, B12 before the speed-ups; (3) S1-S4; (4) W1 under the B2 rule; (5) the
-priority 1.5 group (C2, C3, C1, C6, C9, B7, L8, L13); (6) L7, B4, B5, C5; then the rest by rank. C4 goes with the
-first change that needs it (S7, W3).
+**Execution order** (the ranking, adjusted for dependencies). Done: L1, L2, L3, L5, L6 (entry 20), B1, B3, B7, B11,
+C3, C7, C9, L8, L10, L12 and parts of B5 and B9 (entry 21), fixes from the review of the pull request (entry 22).
+Open: L4 waits for a check on the website. Next, with the owner's focus on aspects other than win rate: (1) B12, then
+S1-S4 (B12 proves they change no move); (2) C2, C1, C6, L13; (3) L7, B4, B5, C5; then the rest by rank. Win-rate work
+waits: the B2 adoption rule, then W1. C4 goes with the first change that needs it (S7, W3).
 
 ## Findings
 
@@ -126,14 +125,15 @@ first change that needs it (S7, W3).
   never resets it. Fix: warn instead of throwing in live mode, reset the state when the auto sweeper starts.
 - **L2** **Fixed** (entry 20). (high, verified) The board-state cache of `sweepStep` makes [w] do nothing on every fresh board after the first
   game (all fresh boards look alike) and makes a repeated [e]/[shift+E] print nothing. Fix: only suppress key repeats.
-- **L3** **Fixed** (entry 20). (medium, verified) Inconsistent positions (a wrong user flag, too many flags, a wrong bomb count) lead to deaths
-  on "certain" moves (180 of 300 test games with one wrong flag), reveal-all behavior and a crash in
+- **L3** **Fixed** (entry 20). (high, verified) Inconsistent positions (a wrong user flag, too many flags, a wrong bomb count) lead to deaths
+  on "certain" moves (180 of 300 test games with one wrong flag, measured with the virtual game's old cascade, entry
+  22), reveal-all behavior and a crash in
   `onIsolatedUnknowns`. Fix: detect "no valid combination", negative bombs left, bombs left without unknown cells; warn
   and make no move.
 - **L3b** (**not planned**, owner decision: wrong flags set by hand only need to be reported, without added
   complexity) A wrong flag that still fits the digits cannot be detected while the solver trusts
-  flags: with one wrong flag, 152 of 300 expert games still die on a non-guess move (the auto sweeper now stops with
-  a warning instead of throwing). Possible fix: treat flags the solver did not set itself as unknown cells (the
+  flags: with one wrong flag, 157 of 294 expert games still die on a non-guess move and 134 are reported as invalid
+  (entry 22; the auto sweeper stops with a warning instead of throwing). Possible fix: treat flags the solver did not set itself as unknown cells (the
   solver re-derives correct flags; one it finds safe is unflagged, then revealed).
 - **L4** (medium, **only seen on the test page, not yet confirmed on the website**) The bomb count is read from the
   options form, not from the running game: changing options before a new game gives wrong probabilities and wrong
@@ -145,16 +145,17 @@ first change that needs it (S7, W3).
   `getBombAmount()` in the console: 10 (or the custom value) while the expert board is shown confirms L4. The test
   environment cannot reach minesweeperonline.com (network policy of the cloud environment; allowing the domain in the
   environment's network settings would make the real page testable).
-- **L5** **Fixed** (entry 20). (medium, verified) Pasting again or pressing [s] several times (or holding it) starts extra auto-sweep loops
-  that [d] cannot stop, and a new paste silently resets the stats. Fix: reuse existing state, ignore [s] while running.
-- **L6** **Fixed** (entry 20). (medium-low, verified) Keybinds fire while typing in the page's inputs (e.g. the custom size fields) and with
+- **L5** **Fixed** (entries 20, 22). (medium, verified) Pasting again or pressing [s] several times (or holding it) starts extra auto-sweep loops
+  that [d] cannot stop, and a new paste silently resets the stats. Fixed with run ids (only the newest auto sweeper
+  continues), the key handler replaced on a new paste, and the stats and the game index kept.
+- **L6** **Fixed** (entries 20, 22: text fields only). (medium-low, verified) Keybinds fire while typing in the page's inputs (e.g. the custom size fields) and with
   Ctrl/Meta/Alt (Ctrl+S starts the auto sweeper). Fix: ignore input targets and modified keys.
 - **L7** (medium, verified) Auto sweeper pacing: about 80% of its time is waiting for browser timers; about 2.8 expert
   games per second where about 19 would be possible (7x). Run steps time-boxed per timer tick.
 - **L8** **Fixed** (entry 21; no games per second, the average game time gives it). (low-medium, verified) Stats: [i] "time" measures only the solver (10x less than real time), "Highest [3]
   time" leaves out the guess steps, [i] prints nothing before the first finished game, no games per second, no ± on
   the win rate; `median` is wrong and unused.
-- **L9** (low-medium, verified) 99x99 live: reading the board costs more than solving (about 5.6 ms per step for
+- **L9** (low, verified) 99x99 live: reading the board costs more than solving (about 5.6 ms per step for
   `getElementById` on every cell). Cache the square elements per board.
 - **L10** **Fixed** (entry 21: the answer is no longer printed; stopping at every [3] step is the mode's definition).
   (low, verified) Riddle finder mode stops at every [3] step (1.7 per expert game) and prints the answer at once;
@@ -205,21 +206,23 @@ first change that needs it (S7, W3).
 - The optimum is well defined: a game is a finite decision problem against chance (all boards equally likely apart
   from the website's safe 3x3 first click area; a position is the set of bomb layouts consistent with what is
   visible; finitely many moves). Its value, including the choice of the first click, is one exact number. It is
-  computed by the same search as the endgame search (which plays it exactly with up to 28 unknown cells), but for a
-  whole expert game there are about 10^100 or more consistent layouts after the opening: not computable with any
-  realistic resources. Flags and chording do not change it (they reveal no information).
+  computed by the same search as the endgame search (which plays it exactly with up to 28 unknown cells while within
+  its budget), but for a whole expert game there are up to about 10^93-10^104 consistent layouts after the opening
+  (at most C(unknown cells, 99)): not computable with any realistic resources. Flags and chording do not change it (they reveal no information).
 - Bounds: at least the best measured play, JSMinesweeper's 54.4% on our boards (Hill's Java solver reports 54.3%).
   An upper bound that can be computed: a player who sees the bombs except for layouts no revealable number can tell
   apart (each such spot with k layouts caps that board at 1/k); it ignores the guesses caused by not knowing yet
   (the early game), so it is expected to be many points too high.
 - **Estimate: about 55% (most likely 54.7-56%)**, a judgement, not a result: endgames with up to 28 unknown cells are
-  already optimal; about 30% of games reach a forced position (about 35% of losses, pure chance from there); the first
+  played optimally while the search stays within endgameSearchBudget (checked exactly up to 12 unknown cells by
+  verify-forced); about 30% of games reach a forced position (about 35% of losses, pure chance from there); the first
   guess among the 6 safest cells showed no headroom beyond ±0.13 per position (entry 15); gains shrink (+3.4 points
-  so far, JSMinesweeper's +0.86 from better tie-breaking, W1 +0.24). The rest would come from planning several moves
+  so far; JSMinesweeper's +0.86, most of it at the first guess; W1 tie-breaking +0.24 of it). The rest would come from planning several moves
   ahead in the middle game, which no current solver does exactly.
 - Surpassing JSMinesweeper: W1 plus what W2 finds should bring parity within about 0.2-0.3 points; clearly beating it
   needs something neither does yet (more computation per guess is available, as run time weighs less than win rate:
-  deeper look-ahead, wider exact search; both measured small so far: entry 15, entry 19). Showing a lead of 0.1-0.2
+  deeper look-ahead, wider exact search; the wider search measured +0.05 ± 0.04 (entry 19), deeper look-ahead is not
+  measured yet: entry 15 covered only the choice among the 6 safest cells). Showing a lead of 0.1-0.2
   points needs on the order of 100000 paired games per comparison (one paired 10000-game run resolves about ±0.3).
 
 ### B: Benchmark and methodology
@@ -245,7 +248,7 @@ first change that needs it (S7, W3).
   testing to stop clear comparisons early.
 - **B9** (low) `--seed 0` makes game 0 unseeded (fixed, entry 21: seeds below 1 are rejected); the normal approximation is
   weak when few games differ (open).
-- **B11** **Fixed** (entry 21). (low, verified) Command-line arguments are not validated (`--games abc` gives NaN games, `--set key` without
+- **B11** **Fixed** (entries 21, 22). (low, verified) Command-line arguments are not validated (`--games abc` gives NaN games, `--set key` without
   `=` throws a cryptic JSON error).
 - **B12** (medium) "Games played differently" compares only won, guesses and steps; decision-preserving changes should
   be checked on every step's moves (the performance review's `check.js` does this).
@@ -283,7 +286,7 @@ first change that needs it (S7, W3).
   `bench/features.js`.
 - **C3** **Fixed** (entry 21). Config traps: `endgameSearchBudget: null` switches the search off (unlike `guessLookaheadBudget: null`),
   `guessLookaheadCandidates: 1` acts like 0, a guess without evaluation when the budget runs out on the first candidate.
-- **C4** Structure: `sweep()` is a 1650-line closure with shared mutable state; move pure parts (look-ahead, endgame
+- **C4** Structure: `sweep()` is a 1700-line closure with shared mutable state; move pure parts (look-ahead, endgame
   input, output formatting) to top-level functions **in the same file** (the script must stay one copy/pastable file).
 - **C5** Benchmark duplication: sandbox setup and the game loop are copied in four places; share them via
   `bench/sandbox.js`.
@@ -295,7 +298,7 @@ first change that needs it (S7, W3).
 - **C9** **Fixed** (entry 21). Verifier comments are outdated (`verify-forced` still describes the endgame search as missing and does not
   fail when the solver is below optimal), and the definition of forced positions lives in three places.
 - **C10** Naming: typos (`executeInterationsOnBoard`, `bombAmout`, `occurenceCount`), `applyToNeighbors` swaps its
-  offset names, implicit globals (fixed in entry 20: now explicit `window` properties), "flags" used for bombs, three
+  offset names, implicit globals (fixed with the live-use fixes: now explicit `window` properties), "flags" used for bombs, three
   positional booleans in `sweep(...)`.
 - **C8** Legacy in-browser virtual mode (`isVirtualMode`, `virtualBatchSize`) and `Math.seedrandom` (not on the website)
   in the pasted script; the benchmark needs only the virtual game functions (owner decision).

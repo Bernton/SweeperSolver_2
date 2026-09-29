@@ -33,12 +33,20 @@ let solverConfig = {
     }
 };
 
+// Right clicks that turn a square of the given class into a flag: the website cycles blank, flag and, with its "marks"
+// option, question mark
+const RIGHT_CLICKS_TO_FLAG = { "square blank": 1, "square question": 2, "square bombflagged": 0 };
+// MouseEvent.button value of the right mouse button
+const RIGHT_MOUSE_BUTTON = 2;
+
 // The endgame search keeps bomb configurations as bit masks of 32 bit integers, which safely hold this many cells
 const ENDGAME_MAX_MASK_BITS = 30;
 
-// Kept on window, so pasting the script again keeps the stats of the games played so far ([k] resets them)
+// Kept on window, so pasting the script again keeps the stats of the games played so far ([k] resets them);
+// the game index continues after them, so new games are recorded as new entries
 let autoSweepStats = window.sweeperAutoSweepStats || { gameStats: [] };
 window.sweeperAutoSweepStats = autoSweepStats;
+autoSweepConfig.state.gameIndex = autoSweepStats.gameStats.length;
 
 disableEndOfGamePrompt();
 setKeyDownHandler();
@@ -57,8 +65,12 @@ function setKeyDownHandler() {
     window.sweepKeyDown = keyDownHandler;
     document.addEventListener("keydown", keyDownHandler);
 
+    // Input types that take typed text (a checkbox or radio button keeps the focus after a click but takes no text)
+    const TEXT_INPUT_TYPES = ["text", "number", "search", "email", "password", "tel", "url"];
+
     function keyDownHandler(e) {
-        let isTyping = e.target && (e.target.isContentEditable || ["INPUT", "TEXTAREA", "SELECT"].includes(e.target.tagName));
+        let target = e.target || {};
+        let isTyping = target.isContentEditable || ["TEXTAREA", "SELECT"].includes(target.tagName) || (target.tagName === "INPUT" && TEXT_INPUT_TYPES.includes(target.type));
 
         // Leave typing in the page's fields and browser shortcuts (Ctrl+S, Ctrl+D, ...) to the page and the browser
         if (isTyping || e.ctrlKey || e.metaKey || e.altKey) {
@@ -151,7 +163,16 @@ function startAutoSweep(config, stats) {
     config.isAutoSweepEnabled = true;
     config.state.lastSweepResult = { state: null, solver: null };
 
-    let currentState = sweepPage(false, false, config).state;
+    // A game the auto sweeper was playing continues: the time since its last step was a pause ([d]), not game time,
+    // and its end is recorded (e.g. a loss on its last move before [s] was pressed again)
+    let pausedGame = stats.gameStats[config.state.gameIndex];
+    let isPausedGame = pausedGame !== undefined && !pausedGame.finishState && pausedGame.lastStepTime !== undefined;
+
+    if (isPausedGame) {
+        pausedGame.pausedTime = (pausedGame.pausedTime || 0) + performance.now() - pausedGame.lastStepTime;
+    }
+
+    let currentState = sweepPage(false, false, config, isPausedGame ? stats : null).state;
 
     // Warned already (no move possible until the board is corrected)
     if (currentState === sweepStates.invalid) {
@@ -312,7 +333,7 @@ function autoSweep(config, stats, runId) {
             if (lastResult.state === sweepStates.death && lastResult.solver !== null && !isGuessingSolver(lastResult.solver)) {
                 console.warn(
                     "Auto sweeper stopped: lost on a move the solver considered certain (solver [" + lastResult.solver + "]). " +
-                        "The board was not what the solver assumed, e.g. a wrong flag set by hand or a wrong bomb count; otherwise it is a solver bug."
+                        "The board was not what the solver assumed (e.g. a wrong flag set by hand, a click by hand or a wrong bomb count); otherwise it is a solver bug."
                 );
                 config.isAutoSweepEnabled = false;
                 return;
@@ -394,12 +415,11 @@ function executeInteractions(interactions, withBoardInteraction, isVirtualMode) 
     function executeInterationsOnBoard(interactions) {
         interactions.forEach((action) => {
             if (action.isFlag) {
-                // With the website's "marks" option a right click cycles blank, flag, question mark: "?" needs two
-                let rightClicks = { "square bombflagged": 0, "square question": 2 }[action.cell.div.className] ?? 1;
+                let rightClicks = RIGHT_CLICKS_TO_FLAG[action.cell.div.className] ?? 0;
 
                 for (let i = 0; i < rightClicks; i++) {
-                    simulate(action.cell.div, "mousedown", 2);
-                    simulate(action.cell.div, "mouseup", 2);
+                    simulate(action.cell.div, "mousedown", RIGHT_MOUSE_BUTTON);
+                    simulate(action.cell.div, "mouseup", RIGHT_MOUSE_BUTTON);
                 }
             } else {
                 simulate(action.cell.div, "mouseup");
@@ -500,7 +520,8 @@ function executeVirtualInteractions(interactions) {
         while (revealCells.length > 0) {
             let cell = revealCells.pop();
 
-            if (cell.isHidden) {
+            // Like the website, opening an area leaves flagged cells closed
+            if (cell.isHidden && !cell.isFlagged) {
                 cell.isHidden = false;
                 cell.isUnknown = false;
                 cell.isFlagged = false;
@@ -642,6 +663,7 @@ function sweepPage(withGuessing = true, doLog = true, config = null, stats = nul
         let gameStats = stats.gameStats[gameIndex];
 
         if (!gameStats.finishState) {
+            gameStats.lastStepTime = sweepT1;
             gameStats.stepStats.push({
                 result: { state: sweepResult.state, solver: sweepResult.solver },
                 time: sweepTime
@@ -658,7 +680,7 @@ function sweepPage(withGuessing = true, doLog = true, config = null, stats = nul
                 gameStats.time = stepStats.reduce((a, b) => a + b.time, 0);
                 gameStats.mostTimeStep = stepStats.reduce((a, b) => Math.max(a, b.time), 0);
                 gameStats.mostTime3Step = stepStats.reduce((a, b) => Math.max(a, was3Step(b) ? b.time : 0), 0);
-                gameStats.wallTime = sweepT1 - gameStats.startTime;
+                gameStats.wallTime = sweepT1 - gameStats.startTime - (gameStats.pausedTime || 0);
 
                 if (!config.isRecordingStepStats) {
                     delete gameStats.stepStats;

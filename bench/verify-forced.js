@@ -5,8 +5,9 @@
 // - the solver's win probability from that position (played once against every configuration),
 // - whether the position is forced (no unknown cell can give information).
 // It fails if the benchmark's forced check (bench/sandbox.js, getForcedWinChance) disagrees with the brute force, if a
-// forced position has another optimum than 1 / number of configurations, or if the solver is below optimal anywhere
-// (its exact endgame search covers these positions; a failure there is a bug or a search over its budget).
+// forced position has another optimum than 1 / number of configurations, if the solver differs from the optimum
+// anywhere (its exact endgame search covers these positions; below it is a bug or a search over its budget, above it a
+// bug in the brute force), or if no position was checked.
 // Definition and proof of forced positions: bench/RESULTS.md, entry 13.
 //
 // Usage: node bench/verify-forced.js [games=1500]
@@ -20,7 +21,16 @@ const DEFAULT_GAMES = 1500;
 // The exact search is exponential in the unknown cells; beyond about this many it takes too long
 const MAX_SEARCHED_UNKNOWNS = 12;
 
+// Relative tolerance for the benchmark's forced win chance, computed in log space
+const WIN_CHANCE_TOLERANCE = 1e-9;
+
 const games = Number(process.argv[2] || DEFAULT_GAMES);
+
+if (!Number.isInteger(games) || games < 1) {
+    console.error("Error: the number of games must be a whole number of at least 1, got: " + process.argv[2]);
+    process.exit(2);
+}
+
 const board = { width: 30, height: 16, bombs: 99 };
 const gameConfig = { width: board.width, height: board.height, bombAmount: board.bombs };
 const config = { isVirtualMode: true, virtualGameConfig: gameConfig };
@@ -38,8 +48,6 @@ let forced = [];
 let other = [];
 let forcedMismatches = 0;
 let forcedCheckMismatches = 0;
-// Relative tolerance for the benchmark's forced win chance, computed in log space
-const WIN_CHANCE_TOLERANCE = 1e-9;
 
 for (let seed = 1; seed <= games; seed++) {
     context.setWindowSeedRng();
@@ -82,11 +90,12 @@ for (let seed = 1; seed <= games; seed++) {
 
 report("Forced positions", forced);
 report("Other positions", other);
-let belowOptimal = forced.concat(other).filter((entry) => entry.optimal - entry.solver > 0).length;
+let notOptimal = forced.concat(other).filter((entry) => entry.optimal !== entry.solver).length;
+let checked = forced.length + other.length;
 console.log("Forced positions where the optimum or the solver is not exactly one configuration: " + forcedMismatches);
 console.log("Positions where the benchmark's forced check disagrees with the brute force: " + forcedCheckMismatches);
-console.log("Positions where the solver is below optimal: " + belowOptimal);
-let isPassed = forcedMismatches === 0 && forcedCheckMismatches === 0 && belowOptimal === 0;
+console.log("Positions where the solver differs from the optimum: " + notOptimal);
+let isPassed = checked > 0 && forcedMismatches === 0 && forcedCheckMismatches === 0 && notOptimal === 0;
 console.log(isPassed ? "PASS" : "FAIL");
 process.exitCode = isPassed ? 0 : 1;
 

@@ -558,7 +558,8 @@ session's scratch space, not in the repository):
   solving plus clicking would allow about 19 per second. 99x99/1960: about 7.5 s per game, board reading about 5.6 ms
   per step.
 - **Inconsistent positions**: with one wrong flag placed next to a digit after step 5, 180 of 300 expert games died on
-  non-guess steps and 2 crashed in `onIsolatedUnknowns`.
+  non-guess steps and 2 crashed in `onIsolatedUnknowns` (measured with the virtual game's old cascade, which opened
+  wrongly flagged cells unlike the website; entry 22).
 - **JSMinesweeper (David Hill) on the same boards** (seeds 300001-310000, start (3,3)): 54.42% vs 53.56% counted,
   paired **+0.86 ± 0.32**; on 6000 of its own boards 54.67 ± 0.64. 42% of games differ at the first guess, which
   accounts for about +66 of the +86 wins, mostly among cells with equal bomb probability and equal evaluation (58% of
@@ -605,7 +606,7 @@ the reconstructed options behavior (fixed options):
 |---|---|---|---|
 | L1 [s] throws after a loss not caused by the auto sweeper | code (`autoSweep`), live test | no: face class and board come from the website's code | reproduced: "Died while not guessing!" on every [s], also after [d] mid-game and a manual loss |
 | L2 [w] does nothing on a new board | code (`sweepStep` cache), live test | no: the website's `newGame` resets every square to "square blank" | reproduced: [w] did nothing on the new board |
-| L3 inconsistent positions | headless benchmark sandbox, live test | no: flags are the website's classes | reproduced headless: 180 of 300 games with one wrong flag died on non-guess moves, 2 crashed |
+| L3 inconsistent positions | headless benchmark sandbox, live test | no: flags are the website's classes | reproduced headless: 180 of 300 games with one wrong flag died on non-guess moves, 2 crashed (virtual game's old cascade, see entry 22) |
 | L4 bomb count from the options form | live test only | **yes** | not decided; waits for a check on the website |
 | L5 duplicate loops | live test (Chrome console semantics) | no | reproduced: a loop of an earlier paste kept running after [d] |
 | L6 keys in fields and with Ctrl/Alt/Meta | live test | fields: the website has input fields in its options (the script reads the custom mine count from one); modifier keys are the browser's | modifier part independent of the page |
@@ -639,7 +640,9 @@ redeclaring `let` variables; Firefox's console may refuse a second paste of the 
 - `bench/run.js all --scale 0.2 --compare HEAD`: 0 games played differently in every suite, 0 errors (consistent
   positions never reach the new checks).
 - Headless, one wrong flag next to a digit after step 5 (300 expert games): 32 detected as invalid, 0 crashes, 152
-  still die on a non-guess move (wrong flags that fit the digits are trusted; the auto sweeper stops with a warning; ROADMAP L3b, not planned), 57 won.
+  still die on a non-guess move (wrong flags that fit the digits are trusted; the auto sweeper stops with a warning;
+  ROADMAP L3b, not planned), 57 won. The wins are an artifact of the virtual game's old cascade, which opened wrongly
+  flagged cells; corrected numbers in entry 22.
 - Live tests (Chromium, the website's game code): all reproductions above now behave as intended; held [shift+E]
   prints once, held [w] keeps playing, held [s] runs one loop that [d] stops, Ctrl+S/Ctrl+W/Ctrl+E/Alt+W/Meta+W and
   typing "sweep" in a field do nothing, [s] on an invalid board warns once and does not start.
@@ -664,7 +667,7 @@ Owner direction: aspects other than win rate first, bugs first. No change to the
 - B7: expected win "n/a" on boards with more bombs than cells outside the first click's 3x3 area
   (FIRST_CLICK_AREA_CELLS), where the website's placement is not uniform.
 - B9, B11: arguments are checked (numbers, seeds of at least 1, `--set key=json`, missing values, unknown features) with
-  a one-line error.
+  a one-line error (an unknown `--set` key and an `--only` without matching preset were still missed: entry 22).
 
 **Verifiers**: `verify-forced` also checks the benchmark's forced check (`getForcedWinChance`, now exported by
 `bench/sandbox.js`) against the brute force and fails if the solver is below optimal anywhere; comments updated (C9).
@@ -685,3 +688,57 @@ limit (MAX_PRINTED_MISMATCHES).
 expected win, gate passes; `verify-forced` PASS; live tests (Chromium, the website's game code) for [i], riddle mode and
 question marks as described. Documentation: README options, sample output (real output), all `autoSweepConfig` keys;
 RESULTS entries 15, 16, 18 notes corrected (C7).
+
+## 22. Independent review of the pull request and its fixes
+
+Three independent reviews (the pasted script, the benchmark, the documentation against the code) of the branch with
+entries 19-21. All found the solver's decisions unchanged (0 games played differently on all suites) and the
+verifiers passing. Findings and what was done:
+
+**Script (`sweeper.js`)**:
+- Bug: after pasting again the stats were kept but the game index restarted at 0, so new games landed on finished
+  entries and were not counted (Chromium: 0 of 50 new games recorded). The game index now continues after the kept
+  stats; re-checked: all new games counted.
+- The "typing in a field" check ignored keys whenever any input had the focus, also the "marks" checkbox (clicks on the
+  board do not move the focus away, the website prevents it). Only text fields count now (TEXT_INPUT_TYPES); re-checked
+  with the focus on the checkbox: [w] plays.
+- The game time included pauses ([d], then [s] on the same game); the pause is now left out (re-checked: 110 ms
+  instead of 2108 ms for a game paused 2 s). A loss on the auto sweeper's last move before [s] was pressed again was
+  not recorded; [s] now records the end of a game it was playing.
+- Named constants for the right clicks (RIGHT_CLICKS_TO_FLAG, RIGHT_MOUSE_BUTTON); the "certain move" warning also
+  names a click by hand as a possible cause.
+- **The virtual game opened wrongly flagged cells when an area opened (its cascade did not skip flags, the website's
+  does).** The solver only flags bombs, which are never next to an opened area, so the benchmark is unaffected (0
+  games played differently on all suites after the fix), but the wrong-flag experiments counted wins that are
+  impossible on the website. Measured again with the corrected cascade (one wrong flag next to a digit after step 5,
+  300 expert games, 6 of them lost before step 5): 134 reported as invalid, 157 die on a non-guess move, 3 on a guess,
+  0 won, 0 crashes.
+
+**Benchmark**:
+- Bug: printing errors instead of crashing (entry 21) kept the process alive when workers failed at startup (e.g. an
+  unknown `--set` key): the per-game timers restarted workers for hours. A failing worker now ends the run (timers
+  cleared, all workers stopped), and the current version's settings are checked in the main thread first.
+- `--only` without a matching preset exited 0 without results; it is an error now. `--scale` must be finite.
+- An explicitly set `boardSettings` (by `--set` or its ablation) is used as given, no longer stripped by other `--set`
+  keys; ablation labels show the `--set` values they include.
+- References older than commit ed131a8 (no analysis mode) made the forced check throw, so their games counted as
+  errors and losses; they now play without it and their expected win is "n/a".
+- No replacement worker is started after the last hung game; the note for slow games that were not replayed no
+  longer claims a replay.
+- `verify-forced`: the number of games is checked, 0 checked positions fail, and a solver above the brute-force
+  optimum fails too (a bug in one of them).
+- Known and kept: the overfull rule is conservative for boards 1 or 2 cells wide (their first click area has fewer than
+  FIRST_CLICK_AREA_CELLS cells), no current preset is affected; replayed slow games have no time limit (at most
+  MAX_REPLAYED_SLOW_GAMES of them).
+
+**Documentation**: ranks renumbered after W10 and L14, the execution order updated (done items removed), impact
+ratings of L3 and L9 aligned with the ranking, statements in the theoretical maximum section made precise (endgame
+optimality only within the search budget, verified up to 12 unknown cells; at most C(unknown cells, 99), about
+10^93-10^104 layouts; JSMinesweeper's +0.86 mostly at the first guess, W1 +0.24 of it; deeper look-ahead not measured
+yet), README precision (text fields, replay limit, ablation values, ENDGAME_MAX_MASK_BITS, reload after updating from
+an older version).
+
+**Checks**: `bench/run.js all --scale 0.2 --compare origin/master`: 0 games played differently, 0 errors, gate PASS;
+`verify-forced` 600 games PASS (0 disagreements, solver equal to the optimum everywhere), `verify-analysis`,
+`verify-website` PASS; rigged copy: hung games in the middle and at the very end give one error each, the run ends;
+a reference that throws while loading and an unknown `--set` key end the run at once with exit code 2.
