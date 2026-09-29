@@ -314,3 +314,26 @@ Gains on all realistic sizes (expert +1.23, 4.6σ; wide +1.7; big +2.0), neutral
 Regression on overfull 9x9/75 (-7.5): tiny endgames (e.g. 3 bombs among 8 equally likely cells) where one move of look-ahead is not the win probability.
 Candidate fix: exact endgame search when few unknowns remain (next feature). Cost: expert 5.5 -> 13.6 ms per game.
 
+## 11. Trial speed: rule stages, constraint check, shared variant prefixes
+
+Single thread, wall time per game (look-ahead on), with rule stages switched off (the full check [3] is complete, so wins and guesses stay identical; only steps and time change):
+
+| Stage switched off | expert 30x16/99 | big 50x50/500 | max 99x99/1960 |
+|---|---|---|---|
+| none (current) | 11.64 ms | 52.3 ms | 482 ms |
+| [0] trivial cases | 16.24 ms (+40%) | 91.1 ms (+74%) | 781 ms (+62%) |
+| [1] suffocations | 12.63 ms (+8.5%) | 57.5 ms (+10%) | 525 ms (+9%) |
+| [2] digit flag combinations | 11.76 ms (±0) | 52.3 ms (±0) | 474 ms (-2%) |
+| [1] and [2] | 11.75 ms | 53.9 ms | 871 ms (+81%) |
+| [0], [1] and [2] | 13.02 ms (+12%) | 99.7 ms (+91%) | 1759 ms (+265%) |
+
+Stages [0] and [1] pay off; [2] is redundant next to [1] and was removed (re-measured against HEAD: expert 11.68 -> 11.18 ms, 50x50 58.0 -> 55.2 ms, 99x99 395 -> 376 ms; identical wins and guesses on all suites).
+Time by deciding stage, expert: guess steps [3g] 70% (2.5/game, 3.3 ms each, look-ahead), [0] 19% (63/game), [1] 6%, [2] 2%, [3] 2%. 50x50: [0] 52%, [3g] 38%.
+
+Digit constraints are now checked by the reachable bomb range instead of scanning all valid combinations (same legal values; 0 games played differently): expert about 6-11% faster.
+
+Tried and dropped:
+- Sharing identical moves between variants that differ only in decisions (replaying the reference's certain steps): identical results, but 154 s vs 110 s for an expert ablation on 4 threads (single thread only 5% faster), as guess steps dominate and cannot be shared.
+- Caching small binomial coefficients: slower than computing them.
+- Returning trivial flags and reveals in one step: 9% fewer steps, no measurable time gain.
+

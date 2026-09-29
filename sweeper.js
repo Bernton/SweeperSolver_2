@@ -715,10 +715,6 @@ function sweep(fieldToSweep, bombAmount, withGuessing = true, doLog = true, isAn
             return onStandardSolving("1", "[1] Suffocations");
         }
 
-        if (checkDigitsFlagCombinations(borderCells)) {
-            return onStandardSolving("2", "[2] Check digits flag combinations");
-        }
-
         let borderCellGroupings = getBorderCellGroupings(field);
         let outsideUnknowns = getOutsideUnknowns(field);
         let flagsLeft = getFlagsLeft(field);
@@ -2052,103 +2048,6 @@ function sweep(fieldToSweep, bombAmount, withGuessing = true, doLog = true, isAn
 
     function checkSolved() {
         return cellCounts.hidden === bombAmount;
-    }
-
-    function getBinaryAssignments(valueAmount, amountOfOnes) {
-        let binaryAssignments = [];
-        let assignment = Array(valueAmount).fill(0);
-        let lastI = assignment.length - 1;
-
-        while (true) {
-            for (let i = 0; i < lastI; i++) {
-                if (assignment[i] > 1) {
-                    assignment[i] = 0;
-                    assignment[i + 1] += 1;
-                } else {
-                    break;
-                }
-            }
-
-            if (assignment[lastI] > 1) {
-                break;
-            }
-
-            if (amountOfOnes === null || assignment.reduce((a, b) => a + b, 0) === amountOfOnes) {
-                binaryAssignments.push(assignment.slice(0));
-            }
-
-            assignment[0] += 1;
-        }
-
-        return binaryAssignments;
-    }
-
-    function checkDigitsFlagCombinations(borderCells) {
-        let interactionFound = false;
-        let digits = borderCells.digits;
-
-        digits.forEach((digit) => {
-            let freeSpots = digit.neighbors;
-            let flagAmount = digit.value - digit.flaggedNeighborAmount;
-            let assignments = getBinaryAssignments(freeSpots.length, flagAmount);
-            let validAssignments = [];
-
-            assignments.forEach((assignment) => {
-                let assignmentValid = true;
-                let flaggedNeighborCounts = {};
-
-                for (let i = 0; i < assignment.length && assignmentValid; i++) {
-                    if (assignment[i] === 0) {
-                        continue;
-                    }
-
-                    let freeSpot = freeSpots[i];
-
-                    freeSpot.neighbors.forEach((digitNeighbor) => {
-                        if (assignmentValid && digitNeighbor !== digit) {
-                            if (digitNeighbor.value < digitNeighbor.flaggedNeighborAmount + 1) {
-                                assignmentValid = false;
-                            } else {
-                                let index = getCellCoords(digitNeighbor);
-
-                                if (flaggedNeighborCounts.hasOwnProperty(index)) {
-                                    flaggedNeighborCounts[index] += 1;
-
-                                    if (digitNeighbor.value < digitNeighbor.flaggedNeighborAmount + flaggedNeighborCounts[index]) {
-                                        assignmentValid = false;
-                                    }
-                                } else {
-                                    flaggedNeighborCounts[index] = 1;
-                                }
-                            }
-                        }
-                    });
-                }
-
-                if (assignmentValid) {
-                    validAssignments.push(assignment);
-                }
-            });
-
-            if (validAssignments.length === 0) {
-                throw new Error("No valid assignments for digit.");
-            }
-
-            let validAssignmentsSum = Array(freeSpots.length).fill(0);
-            validAssignments.forEach((assign) => assign.forEach((value, i) => (validAssignmentsSum[i] += value)));
-
-            validAssignmentsSum.forEach((assignmentSum, i) => {
-                if (assignmentSum === 0) {
-                    revealCell(freeSpots[i]);
-                    interactionFound = true;
-                } else if (assignmentSum === validAssignments.length) {
-                    flagCell(freeSpots[i]);
-                    interactionFound = true;
-                }
-            });
-        });
-
-        return interactionFound;
     }
 
     function getBorderCells(field) {
