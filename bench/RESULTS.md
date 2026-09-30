@@ -504,7 +504,7 @@ Experiment: solverConfig.guessLookaheadOutsiders added that many cells away from
 
 Robustness gate (current version: no errors, no step over SLOW_STEP_TIME = 2000 ms): PASS
 
-1 or 2 extra cells change almost nothing; 4 and 8 are worse (-0.23 ± 0.13, -0.39 ± 0.13 expected): with more such cells in the comparison, the look-ahead's survival of the next move overrates them. Removed again; the patch was never committed, only this description remains.
+1 or 2 extra cells change almost nothing; 4 and 8 are worse (-0.23 ± 0.13, -0.39 ± 0.13 expected): with more such cells in the comparison, the look-ahead's survival of the next move overrates them. Removed again; the patch is kept in the archive branch (`archive/experiments/outsiders.patch`).
 
 
 ## 17. First click offset 3 on expert (solverConfig.boardSettings)
@@ -546,12 +546,12 @@ Experiment: evaluation = (1 - bomb probability) × (expected next safety + guess
 
 Robustness gate (current version: no errors, no step over SLOW_STEP_TIME = 2000 ms): PASS
 
-Fewer guesses per game (2.45 -> 2.27) but lower win rates at every weight (up to -0.50 ± 0.20 expected): rewarding progress trades survival for cells that unlock certain moves. Code removed; the patch was never committed, only this description remains.
+Fewer guesses per game (2.45 -> 2.27) but lower win rates at every weight (up to -0.50 ± 0.20 expected): rewarding progress trades survival for cells that unlock certain moves. Code removed; the patch is kept in the archive branch (`archive/experiments/progress.patch`).
 
 ## 19. Review of 2026-09-29: measurements of the six independent reviews
 
 Findings and the resulting plan are in ROADMAP.md (IDs L, W, B, S, C). Measurements taken by the reviews (scripts in the
-session's scratch space, not in the repository):
+archive branch `archive/prototypes`, see its `archive/README.md`):
 
 - **Website use** (website's game code in headless Chromium, script pasted as in the console): 1000 expert games won
   55.3% (553/1000). Auto sweeper: about 2.8 games per second, about 80% of the time spent waiting for browser timers;

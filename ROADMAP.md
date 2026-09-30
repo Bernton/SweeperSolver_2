@@ -23,6 +23,13 @@ State, review findings and the prioritized plan. Measurements and history are in
 - Benchmark: headless, website-exact boards (verified), paired comparisons, feature ablation, expected win. 10,000 expert
   games take about 1-2.5 minutes on 4 threads, depending on machine load (about 25 ms of solver time per game).
 
+## Archive branch
+
+`archive/prototypes` (never merged) keeps prototypes and one-off scripts that are not adopted code: the speed-ups
+S1-S4 and the strict identity check (B12), the W1 tie-break patch, the JSMinesweeper harness (W2), the browser tests
+of the live fixes, review scripts, and the scripts, patches and raw outputs of RESULTS entries 1-22. Its
+`archive/README.md` is the index; third-party code (the website's game code, jQuery, JSMinesweeper) is not included.
+
 ## Open checks in a browser
 
 Checks the test environment cannot do (it cannot reach minesweeperonline.com); each needs a person with a browser:
@@ -190,7 +197,7 @@ waits: the B2 adoption rule, then W1. C4 goes with the first change that needs i
 - **W1** (high, measured by the review) Tie-breaking as in David Hill's solvers: score every cell tied at the lowest bomb
   probability (not just 3), and break exact ties of the look-ahead evaluation by the expected number of certain safe
   cells after the guess. +0.23 ± 0.10 and +0.24 ± 0.10 expected win on two fresh 10000-game blocks (patch in the
-  review's scratch space, about 40 lines).
+  archive branch, `archive/tie-break/tie-break.patch`, about 40 lines).
 - **W2** (medium, research) The rest of the gap to JSMinesweeper, about 0.6 ± 0.35 points, is unexplained; a paired
   harness (JSMinesweeper headless on the same boards, finding where guesses differ) is the instrument for it.
 - **W3** (low-medium) Exact search triggered by few bomb configurations rather than only by 28 or fewer unknown cells
@@ -270,7 +277,7 @@ waits: the B2 adoption rule, then W1. C4 goes with the first change that needs i
 - **B10** (low-medium) The website fidelity check relies on a browser harness outside the repository; keep at least a
   snapshot and hash of the website's game code.
 
-### S: Speed (decision-preserving; prototypes in the review's scratch space)
+### S: Speed (decision-preserving; prototypes in the archive branch, `archive/speedups/`)
 
 - **S1** Endgame search memo keyed by revealed cells and their shown numbers instead of joining all configurations:
   1.9x faster searches, about 15% on expert.
@@ -325,8 +332,9 @@ waits: the B2 adoption rule, then W1. C4 goes with the first change that needs i
 - **L11 High scores**: should the script keep automated wins out of the website's public high scores (e.g. not
   submitting while the auto sweeper runs)? Currently it answers the name prompt with "cancel".
 - **C8 Legacy browser virtual mode**: keep, document, or remove from the pasted script.
-- **W2 Comparison harness**: JSMinesweeper is third-party code; keep the harness outside the repository (scratch or a
-  separate project) unless its license allows including it.
+- **W2 Comparison harness**: JSMinesweeper is third-party code (MIT license); its code stays outside the repository.
+  Our harness scripts and JSMinesweeper's results on our boards are in the archive branch
+  (`archive/jsminesweeper-harness/`, JSMinesweeper itself to be checked out next to it).
 - **B2 Adoption rule**: confirm or adjust the proposed thresholds.
 
 ## Tried and not adopted
