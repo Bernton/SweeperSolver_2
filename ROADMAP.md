@@ -23,6 +23,19 @@ State, review findings and the prioritized plan. Measurements and history are in
 - Benchmark: headless, website-exact boards (verified), paired comparisons, feature ablation, expected win. 10,000 expert
   games take about 1-2.5 minutes on 4 threads, depending on machine load (about 25 ms of solver time per game).
 
+## Open checks in a browser
+
+Checks the test environment cannot do (it cannot reach minesweeperonline.com); each needs a person with a browser:
+
+1. **Real website**: paste `sweeper.js` into the console on minesweeperonline.com and play a few games with [w], [e]
+   and [s] (the live fixes of entries 20-22 were tested on the website's game code in headless Chromium, not on the
+   website itself).
+2. **L4 bomb count** (about a minute): start an expert game, open the options, select beginner (or change the custom
+   mines) and close the options without starting a new game, then run `getBombAmount()` in the console. 10 (or the
+   custom value) while the expert board is shown confirms L4 (see Findings, L4).
+3. **L14 Firefox**: paste the script a second time in Firefox's console; an error about redeclared variables confirms
+   L14 (see Findings, L14).
+
 ## Where games are lost
 
 Measured before the endgame search and the expert first click (entries 12-13), 5000 expert games:
