@@ -1,0 +1,138 @@
+--- base.js	2026-09-29 12:38:36.749690208 +0000
++++ proto-eg3.js	2026-09-29 12:47:07.884087054 +0000
+@@ -2448,68 +2448,112 @@
+     let memo = new Map();
+     let isWon = (configuration, revealed) => (~configuration & allCells & ~revealed) === 0;
+     let valueOf = (i, configuration) => flaggedNeighbors[i] + bitCount(configuration & neighborMasks[i]);
++    // Bombs among the unknown neighbors of each cell in each configuration, computed once
++    let bombNeighbors = new Uint8Array(configurations.length * unknownAmount);
+ 
+-    let winsWhenRevealing = (i, candidates, revealed) => {
++    configurations.forEach((configuration, c) => {
++        for (let i = 0; i < unknownAmount; i++) {
++            bombNeighbors[c * unknownAmount + i] = bitCount(configuration & neighborMasks[i]);
++        }
++    });
++
++    // A position is the revealed cells and the numbers they showed: for the same revealed cells, different numbers
++    // leave disjoint (so different) configuration lists, so this key identifies the configuration list exactly.
++    // Key: one decimal digit per cell (0: not revealed, else 1 + bombs among its unknown neighbors), split into two
++    // numbers of KEY_DIGITS_PER_PART cells each, which stay exact integers.
++    const KEY_DIGITS_PER_PART = 15;
++    let digitWeights = [];
++
++    for (let i = 0; i < unknownAmount; i++) {
++        digitWeights.push(10 ** (i % KEY_DIGITS_PER_PART));
++    }
++
++    let bucketsByValue = () => [null, null, null, null, null, null, null, null, null];
++
++    // candidates: indices into configurations
++    let winsWhenRevealing = (i, candidates, revealed, keyLow, keyHigh) => {
+         let nextRevealed = revealed | (1 << i);
+-        let groups = new Map();
++        let groups = bucketsByValue();
+         let wins = 0;
+ 
+-        candidates.forEach((configuration) => {
++        for (let c = 0; c < candidates.length; c++) {
++            let index = candidates[c];
++            let configuration = configurations[index];
++
+             if (!(configuration & (1 << i))) {
+-                let value = valueOf(i, configuration);
+-                groups.has(value) ? groups.get(value).push(configuration) : groups.set(value, [configuration]);
++                if (isWon(configuration, nextRevealed)) {
++                    wins += 1;
++                } else {
++                    let value = bombNeighbors[index * unknownAmount + i];
++                    groups[value] ? groups[value].push(index) : (groups[value] = [index]);
++                }
+             }
+-        });
++        }
+ 
+-        groups.forEach((group) => {
+-            let remaining = group.filter((configuration) => !isWon(configuration, nextRevealed));
+-            wins += group.length - remaining.length + winsFrom(remaining, nextRevealed);
+-        });
++        let isLow = i < KEY_DIGITS_PER_PART;
++
++        for (let value = 0; value < groups.length; value++) {
++            if (groups[value]) {
++                let digit = (value + 1) * digitWeights[i];
++                wins += winsFrom(groups[value], nextRevealed, isLow ? keyLow + digit : keyLow, isLow ? keyHigh : keyHigh + digit);
++            }
++        }
+ 
+         return wins;
+     };
+ 
+-    let winsFrom = (candidates, revealed) => {
+-        if (candidates.length === 0) {
+-            return 0;
++    let winsFrom = (candidates, revealed, keyLow, keyHigh) => {
++        let memoHigh = memo.get(keyLow);
++
++        if (!memoHigh) {
++            memoHigh = new Map();
++            memo.set(keyLow, memoHigh);
+         }
+ 
+-        let key = revealed + "|" + candidates.join(",");
++        let wins = memoHigh.get(keyHigh);
+ 
+-        if (!memo.has(key)) {
++        if (wins === undefined) {
+             if (--workLeft < 0) {
+                 throw endgameBudgetExceeded;
+             }
+ 
+             // A cell that is safe in every configuration costs nothing and only adds information, so revealing it
+             // first is optimal: then only that cell needs to be searched
+-            let bombCells = candidates.reduce((a, b) => a | b, 0);
++            let bombCells = 0;
++            let alwaysBombCells = allCells;
++
++            for (let c = 0; c < candidates.length; c++) {
++                bombCells |= configurations[candidates[c]];
++                alwaysBombCells &= configurations[candidates[c]];
++            }
++
+             let certainSafe = allCells & ~revealed & ~bombCells;
+-            let best = 0;
++            wins = 0;
+ 
+             if (certainSafe) {
+-                best = winsWhenRevealing(31 - Math.clz32(certainSafe & -certainSafe), candidates, revealed);
++                wins = winsWhenRevealing(31 - Math.clz32(certainSafe & -certainSafe), candidates, revealed, keyLow, keyHigh);
+             } else {
+                 for (let i = 0; i < unknownAmount; i++) {
+-                    if (!(revealed & (1 << i)) && candidates.some((configuration) => !(configuration & (1 << i)))) {
+-                        best = Math.max(best, winsWhenRevealing(i, candidates, revealed));
++                    if (!(revealed & (1 << i)) && !(alwaysBombCells & (1 << i))) {
++                        wins = Math.max(wins, winsWhenRevealing(i, candidates, revealed, keyLow, keyHigh));
+                     }
+                 }
+             }
+ 
+-            memo.set(key, best);
++            memoHigh.set(keyHigh, wins);
+         }
+ 
+-        return memo.get(key);
++        return wins;
+     };
+ 
+     try {
+         let winCounts = [];
+         let bombCounts = [];
+         let isForced = true;
++        let allIndices = configurations.map((configuration, c) => c);
+ 
+         for (let i = 0; i < unknownAmount; i++) {
+-            winCounts.push(winsWhenRevealing(i, configurations, 0));
++            winCounts.push(winsWhenRevealing(i, allIndices, 0, 0, 0));
+             bombCounts.push(configurations.filter((configuration) => configuration & (1 << i)).length);
+             let values = new Set(configurations.filter((configuration) => !(configuration & (1 << i))).map((configuration) => valueOf(i, configuration)));
+             isForced = isForced && values.size <= 1;

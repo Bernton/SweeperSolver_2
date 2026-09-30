@@ -1,0 +1,40 @@
+diff --git a/bench/features.js b/bench/features.js
+index 802cdad..2e074da 100644
+--- a/bench/features.js
++++ b/bench/features.js
+@@ -4,4 +4,4 @@
+ //
+ // Entry format: { key: "<solverConfig key>", values: [<all values worth comparing>] }
+ 
+-module.exports = [];
++module.exports = [{ key: "firstClickCornerOffset", values: [null, 0, 1, 2, 3, 4] }];
+diff --git a/sweeper.js b/sweeper.js
+index fba44db..a710a24 100644
+--- a/sweeper.js
++++ b/sweeper.js
+@@ -19,6 +19,11 @@ let autoSweepConfig = {
+     state: { gameIndex: 0, lastSweepResult: { state: null, solver: null } }
+ };
+ 
++// Solver features; bench/features.js lists the alternatives that bench/run.js --ablate re-evaluates
++let solverConfig = {
++    firstClickCornerOffset: null // null: first click in the center, n: n cells in from the top left corner (at most the center)
++};
++
+ let autoSweepStats = { gameStats: [] };
+ 
+ disableEndOfGamePrompt();
+@@ -914,6 +919,13 @@ function sweep(fieldToSweep, bombAmount, withGuessing = true, doLog = true) {
+         let height = field.length;
+         let x = Math.floor(width / 2);
+         let y = Math.floor(height / 2);
++        let offset = solverConfig.firstClickCornerOffset;
++
++        if (offset !== null) {
++            x = Math.min(offset, x);
++            y = Math.min(offset, y);
++        }
++
+         revealCell(field[y][x]);
+     }
+ 

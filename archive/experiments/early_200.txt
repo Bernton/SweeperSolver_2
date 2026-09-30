@@ -1,0 +1,7 @@
+First early guesses (more than 60 unknown cells) of 415 expert games: 200 positions, 0 skipped (MAX_GROUP_CONFIGURATIONS)
+Sampler check: largest deviation of sampled mine frequency from the exact bomb probability 0.082 (SUSPICIOUS)
+Win chance after the solver's choice: 44.80% (300 fresh samples per position)
+Rollout-best candidate differs from the solver's choice in 115 of 200 positions
+Gain of the rollout-best candidate on fresh samples: -0.41% ± 0.13% per position (-3.2σ)
+Implied win rate gain from this decision alone: about -0.20% of all games
+Where a different candidate won the selection: gain on fresh samples -0.71% per position, its bomb probability 13.51% vs 10.55% for the solver's choice

@@ -1,0 +1,35 @@
+--- base-3b63610/sweeper.js
++++ instr2.js
+@@ -1944,6 +1944,32 @@
+ 
+             // When only suggesting, all look-ahead candidates are evaluated for the list (same choice as with pruning)
+             let guess = chooseGuess(cellProbs, withGuessing);
++            if (sweepDepth === 1 && withGuessing) {
++                let st = (window.__stats = window.__stats || { guesses: 0, nonEndgame: 0, withIsolated: 0, chosenInIsolated: 0, isoSizes: {}, isoInEndgame: 0 });
++                st.guesses++;
++                let unknownAmount = cellCounts.hidden - cellCounts.flagged;
++                let isoCells = new Set();
++                groupingCheckResults.forEach((gr) => {
++                    let cells = new Set();
++                    gr.candidates.forEach((c) => c.clusterGroup.forEach((g) => cells.add(g.x + "-" + g.y)));
++                    let amounts = new Set(gr.validCombinations.map((c) => c.flagAmount));
++                    if (amounts.size !== 1) return;
++                    let closed = true;
++                    gr.candidates.forEach((c) => c.clusterGroup.forEach((g) => {
++                        let fc = field[g.y][g.x];
++                        fc.neighbors.forEach((n) => { if (n.isUnknown && !cells.has(n.x + "-" + n.y)) closed = false; });
++                    }));
++                    if (closed && gr.validCombinations.length > 1) {
++                        cells.forEach((k) => isoCells.add(k));
++                        let sz = cells.size; st.isoSizes[sz] = (st.isoSizes[sz] || 0) + (unknownAmount > 28 ? 1 : 0);
++                    }
++                });
++                if (unknownAmount > 28) {
++                    st.nonEndgame++;
++                    if (isoCells.size > 0) st.withIsolated++;
++                    if (isoCells.has(guess.candidate.x + "-" + guess.candidate.y)) st.chosenInIsolated++;
++                } else if (isoCells.size > 0) st.isoInEndgame++;
++            }
+ 
+             if (withGuessing) {
+                 let message = "Reveal " + formatCellProb(guess);

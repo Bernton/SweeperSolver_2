@@ -1,0 +1,21 @@
+--- base-3b63610/sweeper.js
++++ instr3.js
+@@ -1914,6 +1914,18 @@
+ 
+         function handleNoCertainResultFound(checkResult) {
+             let cellProbs = calculateCandidateCellProbs(checkResult);
++            if (sweepDepth === 1 && withGuessing) {
++                let st = (window.__stats = window.__stats || { guesses: 0, big: 0, le400: 0, le1000: 0, le4000: 0, bigUnknowns: {} });
++                st.guesses++;
++                let unknownAmount = cellCounts.hidden - cellCounts.flagged;
++                if (unknownAmount > 28) {
++                    st.big++;
++                    let lw = logSumExp(checkResult.mergedSummaries.map((x) => x.logWeight));
++                    if (lw <= Math.log(400)) st.le400++;
++                    if (lw <= Math.log(1000)) { st.le1000++; let b = unknownAmount <= 40 ? "29-40" : unknownAmount <= 60 ? "41-60" : ">60"; st.bigUnknowns[b] = (st.bigUnknowns[b] || 0) + 1; }
++                    if (lw <= Math.log(4000)) st.le4000++;
++                }
++            }
+             let outsider = calculateOutsiderCellProb(cellProbs);
+             evaluateCellProbs(cellProbs, outsider);
+         }

@@ -1,0 +1,75 @@
+--- base-3b63610/sweeper.js
++++ tie.js
+@@ -26,6 +26,8 @@
+     guessLookaheadBudget: 20000, // max bomb combinations the look-ahead enumerates per guess, keeps large boards fast (null: no limit)
+     endgameSearchMaxUnknowns: 28, // exact search for the guess with the best win chance when at most this many unknown cells are left (0: off)
+     endgameSearchBudget: 20000, // max bomb configurations plus search states per guess; above it the look-ahead decides
++    guessProgressTieWeight: 0,
++    guessLookaheadAllTied: 0,
+     // Values that differ for specific boards ("width x height / bombs"), tuned on those boards (bench/RESULTS.md)
+     boardSettings: {
+         "30x16/99": { firstClickCornerOffset: 3 }
+@@ -36,6 +38,7 @@
+ const ENDGAME_MAX_MASK_BITS = 30;
+ 
+ let autoSweepStats = { gameStats: [] };
++let __lastProgress = 0;
+ 
+ disableEndOfGamePrompt();
+ setKeyDownHandler();
+@@ -1834,7 +1837,7 @@
+                 let cellProb = cellProbs[i];
+ 
+                 // Sorted by safety, and a score can not exceed the safety: no later cell can score better
+-                if (isPruned && 1 - cellProb.fraction <= bestScore) {
++                if (isPruned && (1 - cellProb.fraction) * (1 + (settings.guessProgressTieWeight || 0)) <= bestScore) {
+                     break;
+                 }
+ 
+@@ -1845,7 +1848,7 @@
+                 }
+ 
+                 cellProb.survivalWithNextMove = (1 - cellProb.fraction) * expectedNextSafety;
+-                cellProb.evaluation = cellProb.survivalWithNextMove;
++                cellProb.evaluation = (1 - cellProb.fraction) * (expectedNextSafety + (settings.guessProgressTieWeight || 0) * __lastProgress);
+ 
+                 if (cellProb.evaluation > bestScore) {
+                     bestCellProb = cellProb;
+@@ -1874,6 +1877,7 @@
+             }
+ 
+             let maxLogWeight = outcomes.reduce((a, b) => Math.max(a, b.logWeight), -Infinity);
++            __lastProgress = 0;
+ 
+             if (maxLogWeight === -Infinity) {
+                 return 0;
+@@ -1881,12 +1885,15 @@
+ 
+             let totalWeight = 0;
+             let expectedSafety = 0;
++            let progressWeight = 0;
+ 
+             outcomes.forEach((outcome) => {
+                 let weight = Math.exp(outcome.logWeight - maxLogWeight);
+                 totalWeight += weight;
+                 expectedSafety += weight * outcome.bestSafety;
++                if (outcome.bestSafety === 1) progressWeight += weight;
+             });
++            __lastProgress = progressWeight / totalWeight;
+ 
+             return expectedSafety / totalWeight;
+         }
+@@ -1999,7 +2006,12 @@
+             }
+ 
+             if (settings.guessLookaheadCandidates > 1) {
+-                return chooseGuessByLookahead(cellProbs.slice(0, settings.guessLookaheadCandidates), isPruned);
++                let amount = settings.guessLookaheadCandidates;
++                if (settings.guessLookaheadAllTied) {
++                    let tied = cellProbs.filter((c) => Math.abs(c.fraction - cellProbs[0].fraction) < 1e-12).length;
++                    amount = Math.max(amount, Math.min(tied, settings.guessLookaheadAllTied));
++                }
++                return chooseGuessByLookahead(cellProbs.slice(0, amount), isPruned);
+             }
+ 
+             cellProbs.forEach((cellProb) => (cellProb.evaluation = 1 - cellProb.fraction));

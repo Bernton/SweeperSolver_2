@@ -1,0 +1,20 @@
+## Suite expert — 2026-09-29 — 2001e39
+Seeds from 1, 2 threads, 40 games per variant
+- Variant 0: reference /tmp/claude-0/-home-user-SweeperSolver-2/8bcd6e9b-f730-570c-9100-b2e954cede63/scratchpad/review-pr-docs/rigged.js
+- Variant 1: current (Δ against variant 0)
+
+| Preset | Variant | Win % | Δ win vs base (paired) | Expected win % | Δ expected (paired) | Forced games | Games played differently | Guesses/game | ms/game | Slowest step ms | Errors |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| expert 30x16/99 | 0 | 60.00 ± 7.75 |  | 50.63 ± 6.79 |  | 30.0% |  | 2.33 | 1524.1 | 60000 ⚠ | 1 ⚠ |
+|  | 1 | 62.50 ± 7.65 | +2.50 ± 2.47 (1.0σ) | 53.13 ± 6.77 | +2.50 ± 2.50 (1.0σ) | 30.0% | 1 | 2.33 | 25.5 | 68 | 0 |
+
+Errors:
+- expert 30x16/99, variant 0: 1x Timeout (game over 60 s)
+
+Robustness gate (current version: no errors, no step over SLOW_STEP_TIME = 2000 ms): PASS
+
+Total time: 61 s
+
+real	1m1.343s
+user	1m2.816s
+sys	0m0.214s

@@ -1,0 +1,2 @@
+{"gen":"site","boards":50000,"wrongMineCount":0,"minesIn3x3":0,"cells":471,"expectedP":"0.2102","maxAbsZ":"3.22","chiSq":"478","df":470}
+{"gen":"virtual","boards":50000,"wrongMineCount":0,"minesIn3x3":0,"cells":471,"expectedP":"0.2102","maxAbsZ":"3.23","chiSq":"463","df":470}

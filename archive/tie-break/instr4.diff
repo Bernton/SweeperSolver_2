@@ -1,0 +1,20 @@
+--- base-3b63610/sweeper.js
++++ instr4.js
+@@ -1943,7 +1943,16 @@
+             }
+ 
+             // When only suggesting, all look-ahead candidates are evaluated for the list (same choice as with pruning)
+-            let guess = chooseGuess(cellProbs, withGuessing);
++            let guess = chooseGuess(cellProbs, false);
++            if (sweepDepth === 1) {
++                let outsiderFraction = null;
++                if (outsideUnknowns.length > 0) { let a = 0; candidateCellProbs.forEach((c) => (a += c.fraction)); outsiderFraction = (totalFlagsLeft - a) / outsideUnknowns.length; }
++                window.__lastGuessInfo = {
++                    outsiderFraction: outsiderFraction,
++                    list: cellProbs.map((c) => ({ x: c.candidate.x, y: c.candidate.y, f: c.fraction, ev: c.evaluation, out: !!c.isOutsider })),
++                    chosen: { x: guess.candidate.x, y: guess.candidate.y, f: guess.fraction, out: !!guess.isOutsider }
++                };
++            }
+ 
+             if (withGuessing) {
+                 let message = "Reveal " + formatCellProb(guess);

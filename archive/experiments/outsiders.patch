@@ -1,0 +1,141 @@
+diff --git a/bench/features.js b/bench/features.js
+index 783ed81..2b6a5cb 100644
+--- a/bench/features.js
++++ b/bench/features.js
+@@ -8,6 +8,7 @@ module.exports = [
+     { key: "firstClickCornerOffset", values: [null, 1, 2, 3] },
+     { key: "guessLookaheadCandidates", values: [0, 3, 6, 12] },
+     { key: "guessLookaheadBudget", values: [5000, 20000, 100000] },
++    { key: "guessLookaheadOutsiders", values: [0, 1, 2, 4, 8] },
+     { key: "endgameSearchMaxUnknowns", values: [0, 12, 16, 20, 24, 28] },
+     { key: "endgameSearchBudget", values: [20000, 100000, 500000, 2000000] }
+ ];
+diff --git a/sweeper.js b/sweeper.js
+index b46ffa4..a2f8b22 100644
+--- a/sweeper.js
++++ b/sweeper.js
+@@ -24,6 +24,7 @@ let solverConfig = {
+     firstClickCornerOffset: 2, // null: first click in the center, n: n cells in from the top left corner (at most the center)
+     guessLookaheadCandidates: 3, // 0: guess the safest cell, n: of the n safest cells guess the one most likely to survive the next move too
+     guessLookaheadBudget: 20000, // max bomb combinations the look-ahead enumerates per guess, keeps large boards fast (null: no limit)
++    guessLookaheadOutsiders: 0, // cells away from the digits (most likely openings first) added to the look-ahead candidates
+     endgameSearchMaxUnknowns: 28, // exact search for the guess with the best win chance when at most this many unknown cells are left (0: off)
+     endgameSearchBudget: 20000 // max bomb configurations plus search states per guess; above it the look-ahead decides
+ };
+@@ -1748,9 +1749,10 @@ function sweep(fieldToSweep, bombAmount, withGuessing = true, doLog = true, isAn
+             return candidateValues;
+         }
+ 
+-        function calculateOutsiderCellProb(cellProbs) {
++        // Cells away from the digits, most likely to open an area first: one, or guessLookaheadOutsiders of them
++        function calculateOutsiderCellProbs(cellProbs) {
+             if (outsideUnknowns.length === 0) {
+-                return null;
++                return [];
+             }
+ 
+             let averageFlagsInBorder = 0;
+@@ -1789,14 +1791,13 @@ function sweep(fieldToSweep, bombAmount, withGuessing = true, doLog = true, isAn
+             });
+ 
+             outsideUnknowns = outsideUnknowns.sort((a, b) => -(a.probabilityOfZero - b.probabilityOfZero));
+-            let outsiderCandidate = outsideUnknowns[0];
+ 
+-            return {
++            return outsideUnknowns.slice(0, Math.max(1, solverConfig.guessLookaheadOutsiders)).map((outsider) => ({
+                 percentage: (outsideUnknownsFraction * 100).toFixed(2) + "%",
+                 fraction: outsideUnknownsFraction,
+-                candidate: outsiderCandidate,
++                candidate: outsider,
+                 isOutsider: true
+-            };
++            }));
+         }
+ 
+         function analyzeCombinations(checkResult) {
+@@ -1911,8 +1912,8 @@ function sweep(fieldToSweep, bombAmount, withGuessing = true, doLog = true, isAn
+ 
+         function handleNoCertainResultFound(checkResult) {
+             let cellProbs = calculateCandidateCellProbs(checkResult);
+-            let outsider = calculateOutsiderCellProb(cellProbs);
+-            evaluateCellProbs(cellProbs, outsider);
++            let outsiders = calculateOutsiderCellProbs(cellProbs);
++            evaluateCellProbs(cellProbs, outsiders);
+         }
+ 
+         function setCellProbScoresAndSort(cellProbs) {
+@@ -1929,8 +1930,8 @@ function sweep(fieldToSweep, bombAmount, withGuessing = true, doLog = true, isAn
+             });
+         }
+ 
+-        function evaluateCellProbs(candidateCellProbs, outsider) {
+-            let cellProbs = createCellProbsWithOutsider(candidateCellProbs, outsider);
++        function evaluateCellProbs(candidateCellProbs, outsiders) {
++            let cellProbs = createCellProbsWithOutsiders(candidateCellProbs, outsiders);
+             validateCellProbs(cellProbs);
+             cellProbs = setCellProbScoresAndSort(cellProbs);
+ 
+@@ -2004,7 +2005,7 @@ function sweep(fieldToSweep, bombAmount, withGuessing = true, doLog = true, isAn
+             }
+ 
+             if (solverConfig.guessLookaheadCandidates > 1) {
+-                return chooseGuessByLookahead(cellProbs.slice(0, solverConfig.guessLookaheadCandidates), isPruned);
++                return chooseGuessByLookahead(getLookaheadCellProbs(cellProbs), isPruned);
+             }
+ 
+             cellProbs.forEach((cellProb) => (cellProb.evaluation = 1 - cellProb.fraction));
+@@ -2051,7 +2052,7 @@ function sweep(fieldToSweep, bombAmount, withGuessing = true, doLog = true, isAn
+         }
+ 
+         // Guesses the cell with the best win chance; ties go to the lower bomb probability. Cells away from the digits
+-        // that are not candidates yet (only one outsider is) are added to the candidates when chosen.
++        // that are not candidates yet are added to the candidates when chosen.
+         function chooseGuessByEndgame(cellProbs, endgame) {
+             let options = endgame.unknowns.map((cell, i) => {
+                 let cellProb = cellProbs.find((c) => c.candidate.x === cell.x && c.candidate.y === cell.y);
+@@ -2086,14 +2087,28 @@ function sweep(fieldToSweep, bombAmount, withGuessing = true, doLog = true, isAn
+             return best.cellProb;
+         }
+ 
++        // The safest cells plus guessLookaheadOutsiders cells away from the digits, sorted by bomb probability as the
++        // look-ahead's pruning requires (outsiders share one bomb probability and keep their order)
++        function getLookaheadCellProbs(cellProbs) {
++            let safest = cellProbs.slice(0, solverConfig.guessLookaheadCandidates);
++            let outsiders = cellProbs.filter((cellProb) => cellProb.isOutsider && !safest.includes(cellProb)).slice(0, solverConfig.guessLookaheadOutsiders);
++            return safest.concat(outsiders).sort((a, b) => a.fraction - b.fraction);
++        }
++
+         function getEvaluationDescription(cellProbs) {
+             if (endgameConfigurationAmount !== null) {
+                 return "chance to win the game with best play, exact search over all " + endgameConfigurationAmount + " bomb configurations (higher is better)";
+             }
+ 
+             if (solverConfig.guessLookaheadCandidates > 1) {
+-                let amount = Math.min(solverConfig.guessLookaheadCandidates, cellProbs.length);
+-                return "chance to survive the guess and the next move, for the " + amount + " cells with the lowest bomb probability (higher is better)";
++                let lookaheadCellProbs = getLookaheadCellProbs(cellProbs);
++                let outsiderAmount = lookaheadCellProbs.filter((cellProb) => cellProb.isOutsider).length;
++                let safestAmount = lookaheadCellProbs.length - outsiderAmount;
++                return (
++                    "chance to survive the guess and the next move, for the " + safestAmount + " cells with the lowest bomb probability" +
++                    (solverConfig.guessLookaheadOutsiders > 0 && outsiderAmount > 0 ? " and " + outsiderAmount + " cells away from the digits" : "") +
++                    " (higher is better)"
++                );
+             }
+ 
+             return "chance to survive the guess (higher is better)";
+@@ -2130,12 +2145,8 @@ function sweep(fieldToSweep, bombAmount, withGuessing = true, doLog = true, isAn
+             return referenceCell.div ? referenceCell.div : referenceCell;
+         }
+ 
+-        function createCellProbsWithOutsider(candidateCellProbs, outsider) {
+-            let allCellProbs = candidateCellProbs.slice(0);
+-            if (outsider) {
+-                allCellProbs.push(outsider);
+-            }
+-            return allCellProbs;
++        function createCellProbsWithOutsiders(candidateCellProbs, outsiders) {
++            return candidateCellProbs.concat(outsiders);
+         }
+     }
+ 

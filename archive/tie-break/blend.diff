@@ -1,0 +1,40 @@
+--- base-3b63610/sweeper.js
++++ blend.js
+@@ -26,6 +26,7 @@
+     guessLookaheadBudget: 20000, // max bomb combinations the look-ahead enumerates per guess, keeps large boards fast (null: no limit)
+     endgameSearchMaxUnknowns: 28, // exact search for the guess with the best win chance when at most this many unknown cells are left (0: off)
+     endgameSearchBudget: 20000, // max bomb configurations plus search states per guess; above it the look-ahead decides
++    lookaheadSecondWeight: 0,
+     // Values that differ for specific boards ("width x height / bombs"), tuned on those boards (bench/RESULTS.md)
+     boardSettings: {
+         "30x16/99": { firstClickCornerOffset: 3 }
+@@ -1808,18 +1809,25 @@
+             }
+ 
+             let cellProbs = calculateCandidateCellProbs(checkResult);
+-            let bestFraction = cellProbs.reduce((a, b) => Math.min(a, b.fraction), 1);
++            let fractions = cellProbs.map((c) => c.fraction);
+ 
+             // Only the outsider fraction matters here, not which outsider would be picked (calculateOutsiderCellProb)
+             if (outsideUnknowns.length > 0) {
+                 let averageFlagsInBorder = 0;
+                 cellProbs.forEach((cellProb) => (averageFlagsInBorder += cellProb.fraction));
+-                bestFraction = Math.min(bestFraction, (totalFlagsLeft - averageFlagsInBorder) / outsideUnknowns.length);
+-            }
++                let of = (totalFlagsLeft - averageFlagsInBorder) / outsideUnknowns.length;
++                fractions.push(of);
++                if (outsideUnknowns.length > 1) fractions.push(of);
++            }
++            fractions.sort((a, b) => a - b);
++            let s1 = Math.min(1, 1 - fractions[0]);
++            let s2 = fractions.length > 1 ? Math.min(1, 1 - fractions[1]) : s1;
++            let w2 = settings.lookaheadSecondWeight || 0;
++            let blended = s1 === 1 && w2 === 0 ? 1 : (1 - w2) * s1 + w2 * s2;
+ 
+             return {
+                 logWeight: logSumExp(checkResult.mergedSummaries.map((summary) => summary.logWeight)),
+-                bestSafety: Math.min(1, 1 - bestFraction)
++                bestSafety: blended
+             };
+         }
+ 

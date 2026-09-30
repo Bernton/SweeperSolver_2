@@ -1,0 +1,13 @@
+## Suite expert — 2026-09-29 — f2c474d
+Seeds from 600001, 4 threads, 4000 games per variant
+- Variant 0: reference HEAD
+- Variant 1: current (boardSettings={"30x16/99":{"firstClickCornerOffset":4}})
+
+| Preset | Variant | Win % | Δ win vs variant 0 (paired) | Expected win % | Δ expected (paired) | Forced games | Games played differently | Guesses/game | ms/game | Slowest step ms | Errors |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| expert 30x16/99 | 0 | 54.75 ± 0.79 |  | 55.27 ± 0.67 |  | 28.8% |  | 2.44 | 55.9 | 666 | 0 |
+|  | 1 | 53.60 ± 0.79 | -1.15 ± 0.50 (-2.3σ) | 53.71 ± 0.67 | -1.56 ± 0.45 (-3.5σ) | 29.9% | 3502 | 2.50 | 90.9 | 1744 | 0 |
+
+Robustness gate (current version: no errors, no step over SLOW_STEP_TIME = 2000 ms): PASS
+
+Total time: 168 s

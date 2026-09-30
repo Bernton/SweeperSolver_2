@@ -1,0 +1,115 @@
+diff --git a/bench/features.js b/bench/features.js
+index 7604b48..2119e90 100644
+--- a/bench/features.js
++++ b/bench/features.js
+@@ -8,6 +8,7 @@ module.exports = [
+     { key: "firstClickCornerOffset", values: [null, 1, 2, 3] },
+     { key: "guessLookaheadCandidates", values: [0, 3, 6, 12] },
+     { key: "guessLookaheadBudget", values: [5000, 20000, 100000] },
++    { key: "guessProgressWeight", values: [0, 0.05, 0.1, 0.2, 0.5, 1] },
+     { key: "endgameSearchMaxUnknowns", values: [0, 12, 16, 20, 24, 28] },
+     { key: "endgameSearchBudget", values: [20000, 100000, 500000, 2000000] },
+     { key: "boardSettings", values: [{}, { "30x16/99": { firstClickCornerOffset: 3 } }] }
+diff --git a/sweeper.js b/sweeper.js
+index b30219d..8b70c06 100644
+--- a/sweeper.js
++++ b/sweeper.js
+@@ -24,6 +24,7 @@ let solverConfig = {
+     firstClickCornerOffset: 2, // null: first click in the center, n: n cells in from the top left corner (at most the center)
+     guessLookaheadCandidates: 3, // 0: guess the safest cell, n: of the n safest cells guess the one most likely to survive the next move too
+     guessLookaheadBudget: 20000, // max bomb combinations the look-ahead enumerates per guess, keeps large boards fast (null: no limit)
++    guessProgressWeight: 0, // weight of the chance of a certain next move in the look-ahead's evaluation
+     endgameSearchMaxUnknowns: 28, // exact search for the guess with the best win chance when at most this many unknown cells are left (0: off)
+     endgameSearchBudget: 20000, // max bomb configurations plus search states per guess; above it the look-ahead decides
+     // Values that differ for specific boards ("width x height / bombs"), tuned on those boards (bench/RESULTS.md)
+@@ -1829,23 +1830,26 @@ function sweep(fieldToSweep, bombAmount, withGuessing = true, doLog = true, isAn
+             let bestCellProb = cellProbs[0];
+             let bestScore = -1;
+             let budget = { combinationsLeft: settings.guessLookaheadBudget ?? Infinity };
++            let progressWeight = settings.guessProgressWeight;
+ 
+             for (let i = 0; i < cellProbs.length; i++) {
+                 let cellProb = cellProbs[i];
+ 
+-                // Sorted by safety, and a score can not exceed the safety: no later cell can score better
+-                if (isPruned && 1 - cellProb.fraction <= bestScore) {
++                // Sorted by safety, and a score can not exceed the safety times (1 + progress weight): no later cell
++                // can score better
++                if (isPruned && (1 - cellProb.fraction) * (1 + progressWeight) <= bestScore) {
+                     break;
+                 }
+ 
+-                let expectedNextSafety = getExpectedNextSafety(cellProb.candidate, budget);
++                let next = getNextMoveStatistics(cellProb.candidate, budget);
+ 
+-                if (expectedNextSafety === null) {
++                if (next === null) {
+                     break;
+                 }
+ 
+-                cellProb.survivalWithNextMove = (1 - cellProb.fraction) * expectedNextSafety;
+-                cellProb.evaluation = cellProb.survivalWithNextMove;
++                cellProb.survivalWithNextMove = (1 - cellProb.fraction) * next.expectedSafety;
++                cellProb.certainNextMoveChance = next.certainMoveChance;
++                cellProb.evaluation = (1 - cellProb.fraction) * (next.expectedSafety + progressWeight * next.certainMoveChance);
+ 
+                 if (cellProb.evaluation > bestScore) {
+                     bestCellProb = cellProb;
+@@ -1856,9 +1860,9 @@ function sweep(fieldToSweep, bombAmount, withGuessing = true, doLog = true, isAn
+             return bestCellProb;
+         }
+ 
+-        // Safety of the next move, averaged over the values the cell can show if it is safe.
+-        // null when the budget runs out (counted in bomb combinations, so results do not depend on timing).
+-        function getExpectedNextSafety(cell, budget) {
++        // Safety of the next move and the chance that a certain safe move exists, averaged over the values the cell can
++        // show if it is safe. null when the budget runs out (counted in bomb combinations, independent of timing).
++        function getNextMoveStatistics(cell, budget) {
+             let fieldCell = field[cell.y][cell.x];
+             let outcomes = [];
+ 
+@@ -1876,19 +1880,21 @@ function sweep(fieldToSweep, bombAmount, withGuessing = true, doLog = true, isAn
+             let maxLogWeight = outcomes.reduce((a, b) => Math.max(a, b.logWeight), -Infinity);
+ 
+             if (maxLogWeight === -Infinity) {
+-                return 0;
++                return { expectedSafety: 0, certainMoveChance: 0 };
+             }
+ 
+             let totalWeight = 0;
+             let expectedSafety = 0;
++            let certainMoveWeight = 0;
+ 
+             outcomes.forEach((outcome) => {
+                 let weight = Math.exp(outcome.logWeight - maxLogWeight);
+                 totalWeight += weight;
+                 expectedSafety += weight * outcome.bestSafety;
++                certainMoveWeight += outcome.bestSafety === 1 ? weight : 0;
+             });
+ 
+-            return expectedSafety / totalWeight;
++            return { expectedSafety: expectedSafety / totalWeight, certainMoveChance: certainMoveWeight / totalWeight };
+         }
+ 
+         function createFieldWithRevealedCell(cell, value) {
+@@ -2088,7 +2094,8 @@ function sweep(fieldToSweep, bombAmount, withGuessing = true, doLog = true, isAn
+ 
+             if (settings.guessLookaheadCandidates > 1) {
+                 let amount = Math.min(settings.guessLookaheadCandidates, cellProbs.length);
+-                return "chance to survive the guess and the next move, for the " + amount + " cells with the lowest bomb probability (higher is better)";
++                let progress = settings.guessProgressWeight > 0 ? " plus " + settings.guessProgressWeight + " x chance of a certain next move" : "";
++                return "chance to survive the guess and the next move" + progress + ", for the " + amount + " cells with the lowest bomb probability (higher is better)";
+             }
+ 
+             return "chance to survive the guess (higher is better)";
+@@ -2103,6 +2110,10 @@ function sweep(fieldToSweep, bombAmount, withGuessing = true, doLog = true, isAn
+                 message += ", survive it and next move " + (cellProb.survivalWithNextMove * 100).toFixed(2) + "%";
+             }
+ 
++            if (cellProb.certainNextMoveChance !== undefined && settings.guessProgressWeight > 0) {
++                message += ", certain next move " + (cellProb.certainNextMoveChance * 100).toFixed(2) + "%";
++            }
++
+             if (cellProb.winChance !== undefined) {
+                 message += ", win chance with best play " + (cellProb.winChance * 100).toFixed(2) + "%";
+             }

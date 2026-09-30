@@ -1,0 +1,211 @@
+--- base-3b63610/sweeper.js
++++ proto-both.js
+@@ -676,6 +676,9 @@
+     let revealedCells = new Set();
+     let flaggedCells = new Set();
+     let cellCounts = { cells: 0, hidden: 0, flagged: 0, revealedBombs: 0 };
++    // Filled during the copy, in board order: digits with unknown neighbors and unknown cells
++    let activeDigits = [];
++    let unknownCells = [];
+     let depth = sweepDepth;
+     let checkResult;
+ 
+@@ -813,8 +816,8 @@
+     function getOutsideUnknowns(field) {
+         let outsideUnknowns = [];
+ 
+-        applyToCells(field, (cell) => {
+-            if (cell.isUnknown && !cell.isBorderCell) {
++        unknownCells.forEach((cell) => {
++            if (!cell.isBorderCell) {
+                 cell.borderCellNeighborAmount = 0;
+ 
+                 cell.neighbors.forEach((neighbor) => {
+@@ -1010,8 +1013,8 @@
+     function checkTrivialReveals(field) {
+         let revealsFound = false;
+ 
+-        applyToCells(field, (cell) => {
+-            if (cell.isDigit && cell.flaggedNeighborAmount === cell.value) {
++        activeDigits.forEach((cell) => {
++            if (cell.flaggedNeighborAmount === cell.value) {
+                 cell.neighbors.forEach((neighbor) => {
+                     if (neighbor.isUnknown) {
+                         revealCell(neighbor);
+@@ -1138,6 +1141,12 @@
+                 cell.unknownNeighborAmount = unknownNeighborAmount;
+                 cell.flaggedNeighborAmount = flaggedNeighborAmount;
+                 cell.hiddenNeighborAmount = unknownNeighborAmount + flaggedNeighborAmount;
++
++                if (cell.isDigit && unknownNeighborAmount > 0) {
++                    activeDigits.push(cell);
++                } else if (cell.isUnknown) {
++                    unknownCells.push(cell);
++                }
+             }
+         }
+     }
+@@ -2160,12 +2169,10 @@
+         let fieldBorderDigits = [];
+         let borderDigits = [];
+ 
+-        applyToCells(field, (cell) => {
+-            if (cell.isDigit && cell.unknownNeighborAmount > 0) {
+-                cell.isBorderCell = true;
+-                fieldBorderDigits.push(cell);
+-                borderDigits.push(createBorderDigit(cell));
+-            }
++        activeDigits.forEach((cell) => {
++            cell.isBorderCell = true;
++            fieldBorderDigits.push(cell);
++            borderDigits.push(createBorderDigit(cell));
+         });
+ 
+         let borderUnknownsByFieldCell = new Map();
+@@ -2292,8 +2299,8 @@
+     function checkTrivialFlags(field) {
+         let flagsFound = false;
+ 
+-        applyToCells(field, (cell) => {
+-            if (cell.isDigit && cell.hiddenNeighborAmount === cell.value && cell.flaggedNeighborAmount !== cell.value) {
++        activeDigits.forEach((cell) => {
++            if (cell.hiddenNeighborAmount === cell.value && cell.flaggedNeighborAmount !== cell.value) {
+                 cell.neighbors.forEach((neighborCell) => {
+                     if (neighborCell.isUnknown) {
+                         flagCell(neighborCell);
+@@ -2448,68 +2455,112 @@
+     let memo = new Map();
+     let isWon = (configuration, revealed) => (~configuration & allCells & ~revealed) === 0;
+     let valueOf = (i, configuration) => flaggedNeighbors[i] + bitCount(configuration & neighborMasks[i]);
++    // Bombs among the unknown neighbors of each cell in each configuration, computed once
++    let bombNeighbors = new Uint8Array(configurations.length * unknownAmount);
++
++    configurations.forEach((configuration, c) => {
++        for (let i = 0; i < unknownAmount; i++) {
++            bombNeighbors[c * unknownAmount + i] = bitCount(configuration & neighborMasks[i]);
++        }
++    });
+ 
+-    let winsWhenRevealing = (i, candidates, revealed) => {
++    // A position is the revealed cells and the numbers they showed: for the same revealed cells, different numbers
++    // leave disjoint (so different) configuration lists, so this key identifies the configuration list exactly.
++    // Key: one decimal digit per cell (0: not revealed, else 1 + bombs among its unknown neighbors), split into two
++    // numbers of KEY_DIGITS_PER_PART cells each, which stay exact integers.
++    const KEY_DIGITS_PER_PART = 15;
++    let digitWeights = [];
++
++    for (let i = 0; i < unknownAmount; i++) {
++        digitWeights.push(10 ** (i % KEY_DIGITS_PER_PART));
++    }
++
++    let bucketsByValue = () => [null, null, null, null, null, null, null, null, null];
++
++    // candidates: indices into configurations
++    let winsWhenRevealing = (i, candidates, revealed, keyLow, keyHigh) => {
+         let nextRevealed = revealed | (1 << i);
+-        let groups = new Map();
++        let groups = bucketsByValue();
+         let wins = 0;
+ 
+-        candidates.forEach((configuration) => {
++        for (let c = 0; c < candidates.length; c++) {
++            let index = candidates[c];
++            let configuration = configurations[index];
++
+             if (!(configuration & (1 << i))) {
+-                let value = valueOf(i, configuration);
+-                groups.has(value) ? groups.get(value).push(configuration) : groups.set(value, [configuration]);
++                if (isWon(configuration, nextRevealed)) {
++                    wins += 1;
++                } else {
++                    let value = bombNeighbors[index * unknownAmount + i];
++                    groups[value] ? groups[value].push(index) : (groups[value] = [index]);
++                }
+             }
+-        });
++        }
+ 
+-        groups.forEach((group) => {
+-            let remaining = group.filter((configuration) => !isWon(configuration, nextRevealed));
+-            wins += group.length - remaining.length + winsFrom(remaining, nextRevealed);
+-        });
++        let isLow = i < KEY_DIGITS_PER_PART;
++
++        for (let value = 0; value < groups.length; value++) {
++            if (groups[value]) {
++                let digit = (value + 1) * digitWeights[i];
++                wins += winsFrom(groups[value], nextRevealed, isLow ? keyLow + digit : keyLow, isLow ? keyHigh : keyHigh + digit);
++            }
++        }
+ 
+         return wins;
+     };
+ 
+-    let winsFrom = (candidates, revealed) => {
+-        if (candidates.length === 0) {
+-            return 0;
++    let winsFrom = (candidates, revealed, keyLow, keyHigh) => {
++        let memoHigh = memo.get(keyLow);
++
++        if (!memoHigh) {
++            memoHigh = new Map();
++            memo.set(keyLow, memoHigh);
+         }
+ 
+-        let key = revealed + "|" + candidates.join(",");
++        let wins = memoHigh.get(keyHigh);
+ 
+-        if (!memo.has(key)) {
++        if (wins === undefined) {
+             if (--workLeft < 0) {
+                 throw endgameBudgetExceeded;
+             }
+ 
+             // A cell that is safe in every configuration costs nothing and only adds information, so revealing it
+             // first is optimal: then only that cell needs to be searched
+-            let bombCells = candidates.reduce((a, b) => a | b, 0);
++            let bombCells = 0;
++            let alwaysBombCells = allCells;
++
++            for (let c = 0; c < candidates.length; c++) {
++                bombCells |= configurations[candidates[c]];
++                alwaysBombCells &= configurations[candidates[c]];
++            }
++
+             let certainSafe = allCells & ~revealed & ~bombCells;
+-            let best = 0;
++            wins = 0;
+ 
+             if (certainSafe) {
+-                best = winsWhenRevealing(31 - Math.clz32(certainSafe & -certainSafe), candidates, revealed);
++                wins = winsWhenRevealing(31 - Math.clz32(certainSafe & -certainSafe), candidates, revealed, keyLow, keyHigh);
+             } else {
+                 for (let i = 0; i < unknownAmount; i++) {
+-                    if (!(revealed & (1 << i)) && candidates.some((configuration) => !(configuration & (1 << i)))) {
+-                        best = Math.max(best, winsWhenRevealing(i, candidates, revealed));
++                    if (!(revealed & (1 << i)) && !(alwaysBombCells & (1 << i))) {
++                        wins = Math.max(wins, winsWhenRevealing(i, candidates, revealed, keyLow, keyHigh));
+                     }
+                 }
+             }
+ 
+-            memo.set(key, best);
++            memoHigh.set(keyHigh, wins);
+         }
+ 
+-        return memo.get(key);
++        return wins;
+     };
+ 
+     try {
+         let winCounts = [];
+         let bombCounts = [];
+         let isForced = true;
++        let allIndices = configurations.map((configuration, c) => c);
+ 
+         for (let i = 0; i < unknownAmount; i++) {
+-            winCounts.push(winsWhenRevealing(i, configurations, 0));
++            winCounts.push(winsWhenRevealing(i, allIndices, 0, 0, 0));
+             bombCounts.push(configurations.filter((configuration) => configuration & (1 << i)).length);
+             let values = new Set(configurations.filter((configuration) => !(configuration & (1 << i))).map((configuration) => valueOf(i, configuration)));
+             isForced = isForced && values.size <= 1;

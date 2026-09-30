@@ -1,0 +1,16 @@
+const fs = require("fs");
+const { createSolver, playGameGroup } = require("/home/user/SweeperSolver_2/bench/sandbox");
+const src = fs.readFileSync("/home/user/SweeperSolver_2/sweeper.js", "utf8");
+const configs = [{}, { guessLookaheadCandidates: 0 }, { guessLookaheadCandidates: 6 }, { firstClickCornerOffset: 3 }];
+const solvers = configs.map((c) => createSolver(src, c));
+const board = { width: 30, height: 16, bombs: 99 };
+const N = Number(process.argv[2] || 300);
+let t0 = Date.now();
+for (let s = 1; s <= N; s++) solvers.forEach((sv) => sv.playGame(board, s));
+console.log("separate:", Date.now() - t0, "ms");
+t0 = Date.now();
+for (let s = 1; s <= N; s++) playGameGroup(solvers.map((sv) => sv.context), board, s);
+console.log("shared:  ", Date.now() - t0, "ms");
+t0 = Date.now();
+for (let s = 1; s <= N; s++) solvers.forEach((sv) => sv.playGame(board, s));
+console.log("separate again:", Date.now() - t0, "ms");

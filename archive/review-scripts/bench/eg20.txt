@@ -1,0 +1,13 @@
+## Suite expert — 2026-09-29 — f2c474d
+Seeds from 500001, 4 threads, 4000 games per variant
+- Variant 0: reference HEAD
+- Variant 1: current (endgameSearchMaxUnknowns=20)
+
+| Preset | Variant | Win % | Δ win vs variant 0 (paired) | Expected win % | Δ expected (paired) | Forced games | Games played differently | Guesses/game | ms/game | Slowest step ms | Errors |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| expert 30x16/99 | 0 | 54.27 ± 0.79 |  | 53.77 ± 0.67 |  | 30.3% |  | 2.50 | 59.1 | 1110 | 0 |
+|  | 1 | 54.15 ± 0.79 | -0.13 ± 0.10 (-1.3σ) | 53.60 ± 0.67 | -0.17 ± 0.09 (-2.0σ) | 30.4% | 50 | 2.50 | 46.9 | 715 | 0 |
+
+Robustness gate (current version: no errors, no step over SLOW_STEP_TIME = 2000 ms): PASS
+
+Total time: 123 s

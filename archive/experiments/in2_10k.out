@@ -1,0 +1,5 @@
+Board: 30x16 / 99 bombs, seeds 1-10000
+-> Winning percentage:	52.25% ± 0.50 (5225/10000)
+-> Average guesses:	2.66
+-> Average/Max time:	16.29 ms per game / 51.05 ms per step
+-> Errors:		0
