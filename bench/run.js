@@ -448,7 +448,7 @@ function printResults(variants, presets, results, replayNotes) {
                 let baseGames = results[variant.baseIndex][presetIndex];
                 delta = formatPairedDelta(baseGames, games);
                 expectedDelta = isExpectedDeltaUnavailable ? "n/a" : formatPairedMeanDelta(baseGames.map(getExpectedWin), expectedWins);
-                playedDifferently = count(games, (g, i) => g.won !== baseGames[i].won || g.guesses !== baseGames[i].guesses || g.steps !== baseGames[i].steps);
+                playedDifferently = count(games, (g, i) => g.moveHash !== baseGames[i].moveHash);
             }
 
             if (variantIndex === currentIndex && (errors.length > 0 || slowestStep > SLOW_STEP_TIME)) {
