@@ -9,6 +9,10 @@ on:
   push:
     branches: [master]
 
+# The checks only read the repository
+permissions:
+  contents: read
+
 env:
   # Share of every benchmark preset's games (bench/presets.js): all suites at this scale take about a minute or two
   BENCH_SCALE: 0.2
@@ -18,11 +22,11 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30 # a normal run takes a few minutes; a hung run is stopped
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0 # the benchmark reads the base version of sweeper.js from git
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: 22
 
