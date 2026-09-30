@@ -21,7 +21,8 @@ State, review findings and the prioritized plan. Measurements and history are in
 - `sweeper.js` stays a single copy/pastable script; the console output shows bomb probability, statistics and the
   evaluation for every candidate.
 - Benchmark: headless, website-exact boards (verified), paired comparisons, feature ablation, expected win. 10,000 expert
-  games take about 1-2.5 minutes on 4 threads, depending on machine load (about 25 ms of solver time per game).
+  games take about 1-2 minutes on 4 threads, depending on machine load (about 20 ms of solver time per game).
+  "Games played differently" compares every move of every game (B12).
 - Continuous checks (GitHub Actions, `.github/workflows/checks.yml`): every pull request and push to master runs the
   three verifiers and `bench/run.js all --scale 0.2` against the base version; the robustness gate decides, and the
   table (with the games played differently) is in the job summary.
@@ -86,11 +87,11 @@ usability, and the owner's rules (one copy/pastable script, no magic numbers).
 | 3 | B1 | **Fixed**: hung game makes expected win NaN; timeout per task, not per game | med-high | high | S | 2.5 | BM, CH |
 | 3 | B2 | Seed discipline: seed ledger (started) and a fixed adoption rule | med-high | high | S | 2.5 | BM |
 | 3 | B3 | **Fixed**: ablation blind spot: board-specific values hide the general ones | med-high | high | S | 2.5 | BM |
-| 3 | S1-S4 | Four decision-preserving speed-ups (0.70x expert, 0.63x 99x99) | med-high | high | S | 2.5 | PF |
+| 3 | S1-S4 | **Done**: four decision-preserving speed-ups (0.76x expert, 0.64x 99x99, entry 23) | med-high | high | S | 2.5 | PF |
 | 7 | W1 | Tie-breaking and scoring all tied cells (+0.24 ± 0.07 on fresh seeds) | high | medium | S | 2.4 | SA |
 | 8 | L3 | **Fixed**: inconsistent positions (wrong flags, wrong count): deaths on "certain" moves, crash | high | high | S-M | 2.0 | SC, WU |
 | 8 | L5 | **Fixed**: duplicate auto-sweep loops after pasting again or repeated [s] | medium | high | S | 2.0 | WU |
-| 8 | B12 | Strict identity check (every step's moves) for decision-preserving changes | medium | high | S | 2.0 | PF |
+| 8 | B12 | **Done**: strict identity check (every step's moves) for decision-preserving changes | medium | high | S | 2.0 | PF |
 | 8 | C2 | Remaining magic numbers (owner rule) | medium | high | S | 2.0 | CH |
 | 12 | L4 | Bomb count from the options form instead of the running game (only seen on the test page: check on the website first) | medium | medium | S | 1.6 | WU, SC |
 | 13 | L6 | **Fixed**: keybinds fire in page inputs, with Ctrl/Meta/Alt and on key repeat | low-med | high | S | 1.5 | WU, CH |
@@ -135,8 +136,8 @@ usability, and the owner's rules (one copy/pastable script, no magic numbers).
 
 **Execution order** (the ranking, adjusted for dependencies). Done: L1, L2, L3, L5, L6 (entry 20), B1, B3, B7, B11,
 C3, C7, C9, L8, L10, L12 and parts of B5 and B9 (entry 21), fixes from the review of the pull request (entry 22), the archive branch for prototypes, continuous checks (part
-of B8). Open: L4 waits for a check on the website. Next, with the owner's focus on aspects other than win rate: (1) B12, then
-S1-S4 (B12 proves they change no move); (2) C2, C1, C6, L13; (3) L7, B4, B5, C5; then the rest by rank. Win-rate work
+of B8), B12 and S1-S4 (entry 23). Open: L4 waits for a check on the website. Next, with the owner's focus on aspects
+other than win rate: (1) C2, C1, C6, L13; (2) L7, B4, B5, C5; then the rest by rank. Win-rate work
 waits: the B2 adoption rule, then W1. C4 goes with the first change that needs it (S7, W3).
 
 ## Findings
@@ -273,14 +274,14 @@ waits: the B2 adoption rule, then W1. C4 goes with the first change that needs i
   weak when few games differ (open).
 - **B11** **Fixed** (entries 21, 22). (low, verified) Command-line arguments are not validated (`--games abc` gives NaN games, `--set key` without
   `=` throws a cryptic JSON error).
-- **B12** (medium) "Games played differently" compares only won, guesses and steps; decision-preserving changes should
+- **B12** **Done** (entry 23). (medium) "Games played differently" compares only won, guesses and steps; decision-preserving changes should
   be checked on every step's moves (the performance review's `check.js` does this).
 - Also in B4 (fixed, entry 21): with `--compare`, ablation deltas were shown against the reference, not the current
   version.
 - **B10** (low-medium) The website fidelity check relies on a browser harness outside the repository; keep at least a
   snapshot and hash of the website's game code.
 
-### S: Speed (decision-preserving; prototypes in the archive branch, `archive/speedups/`)
+### S: Speed (decision-preserving; S1-S4 adopted in entry 23, prototypes in the archive branch, `archive/speedups/`)
 
 - **S1** Endgame search memo keyed by revealed cells and their shown numbers instead of joining all configurations:
   1.9x faster searches, about 15% on expert.
@@ -289,6 +290,8 @@ waits: the B2 adoption rule, then W1. C4 goes with the first change that needs i
 - **S3** Incremental neighbor counts in the reused board copy: about 10% more.
 - **S4** Skip clusters of size 1 in the occurrence count product (bit-identical): up to 22% on dense 99x99.
 - Together: about 0.70x solver time on expert, 0.63x on 99x99; 0 games played differently on all presets.
+- **S1-S4 done** (entry 23): on the current script 0.76x on expert, 0.64x on 99x99/1960; each alone helps (expert /
+  99x99: S1 0.82 / 0.97, S2 0.94 / 0.77, S3 0.96 / 0.71, S4 0.99 / 0.86).
 - **S5** The benchmark's forced check costs 8-9% of trial time; let the solver report forcedness where it already knows.
 - **S6** Complexity risk: the main combination search has no work budget; a long, weakly constrained border could grow
   exponentially (largest seen: 5880 combinations over 57 candidates, 420 ms). A deterministic work counter with a

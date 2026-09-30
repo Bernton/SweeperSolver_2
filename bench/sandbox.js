@@ -44,10 +44,25 @@ function createSolver(source, configOverrides = {}) {
     };
 }
 
+// 32-bit FNV-1a hash (offset basis and prime of the standard), for the fingerprint of every move of a game
+const FNV_OFFSET_BASIS = 0x811c9dc5;
+const FNV_PRIME = 0x01000193;
+
+function hashText(hash, text) {
+    for (let i = 0; i < text.length; i++) {
+        hash = Math.imul(hash ^ text.charCodeAt(i), FNV_PRIME);
+    }
+
+    return hash;
+}
+
+// moveHash fingerprints every step: its state, solver stage and interactions in order, so two versions that play a game
+// with exactly the same moves have the same hash (bench/run.js: "Games played differently")
 function playGame(context, board, seed, hasForcedCheck = true) {
     let gameConfig = { width: board.width, height: board.height, bombAmount: board.bombs };
     let config = { isVirtualMode: true, virtualGameConfig: gameConfig };
-    let result = { won: false, guesses: 0, steps: 0, time: 0, maxStepTime: 0, error: null, forcedWinChance: null, hasForcedCheck: hasForcedCheck };
+    let result = { won: false, guesses: 0, steps: 0, time: 0, maxStepTime: 0, error: null, forcedWinChance: null, hasForcedCheck: hasForcedCheck, moveHash: 0 };
+    let moveHash = FNV_OFFSET_BASIS;
 
     try {
         context.setWindowSeedRng();
@@ -60,6 +75,8 @@ function playGame(context, board, seed, hasForcedCheck = true) {
             let stepTime = performance.now() - t0;
             result.time += stepTime;
             result.maxStepTime = Math.max(result.maxStepTime, stepTime);
+            moveHash = hashText(moveHash, sweepResult.state + "/" + sweepResult.solver + ":");
+            sweepResult.interactions.forEach((action) => (moveHash = hashText(moveHash, (action.isFlag ? "f" : "r") + action.cell.x + "," + action.cell.y + ";")));
 
             if (sweepResult.state === "solved") {
                 result.won = true;
@@ -89,6 +106,7 @@ function playGame(context, board, seed, hasForcedCheck = true) {
         result.error = e.message;
     }
 
+    result.moveHash = moveHash >>> 0;
     return result;
 }
 

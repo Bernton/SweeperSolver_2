@@ -742,3 +742,39 @@ an older version).
 `verify-forced` 600 games PASS (0 disagreements, solver equal to the optimum everywhere), `verify-analysis`,
 `verify-website` PASS; rigged copy: hung games in the middle and at the very end give one error each, the run ends;
 a reference that throws while loading and an unknown `--set` key end the run at once with exit code 2.
+
+## 23. Strict identity check (B12) and the speed-ups S1-S4
+
+**B12**: every game of the benchmark gets a fingerprint (32-bit FNV-1a hash) of every step's state, solver stage and
+interactions in order; "Games played differently" compares these fingerprints (before: only won, guesses and steps).
+Sensitivity: a copy of the script that only reverses the order of each step's interactions (same play, other order)
+shows 295 of 300 expert games played differently with the fingerprint, 0 with the old comparison.
+
+**S1-S4** (performance review prototypes, `archive/speedups/speedups.diff` on the archive branch, applied to the
+current script without conflicts):
+- S1: the endgame search memo is keyed by the revealed cells and the numbers they showed (identifies the remaining
+  configurations exactly) instead of joining the configuration list; the bomb neighbors per configuration are computed
+  once.
+- S2: the trivial stage, the border cell and the outside cell searches go through the digits with unknown neighbors and
+  the unknown cells collected during the copy of the board, instead of the whole board.
+- S3: the neighbor counts of the reused solver board are updated only for cells that changed since its last board.
+- S4: the occurrence count product skips single cells (their factor is 1).
+
+Identity (with the fingerprint, against master): `bench/run.js all --scale 0.2`, the full expert suite (10000 games),
+the full sizes and stress suites: 0 games played differently, 0 errors, gate PASS. `verify-forced` (S1 plays every
+small endgame optimally), `verify-analysis`, `verify-website` PASS; the wrong-flag experiment of entry 22 gives the same
+counts (134 invalid, 157 non-guess deaths, 3 guess deaths).
+
+Speed (the review's `check.js`: both versions alternate game by game in one process, CPU time, identical move traces):
+
+| Board | Games | Master ms/game | S1-S4 ms/game | Ratio |
+|---|---|---|---|---|
+| expert 30x16/99 | 2000 | 26.02 | 19.79 | 0.76 |
+| 50x50/500 | 100 | 87.73 | 62.52 | 0.71 |
+| 99x99/1960 | 20 | 347.97 | 222.63 | 0.64 |
+| beginner 9x9/10 | 3000 | 0.50 | 0.41 | 0.82 |
+
+Each alone against master (expert 1000 games / 99x99/1960 10 games): S1 0.82 / 0.97, S2 0.94 / 0.77, S3 0.96 / 0.71,
+S4 0.99 / 0.86. S4 is within noise on expert and clear on large boards; S2 and S3 overlap (both remove whole-board
+passes). All four are kept: none changes a move, each is faster alone on at least one board type, and together they are
+the fastest.

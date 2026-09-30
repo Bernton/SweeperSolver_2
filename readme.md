@@ -108,6 +108,7 @@ The solver itself is configured in the global object *solverConfig*:
 - `--set key=json` overrides a *solverConfig* value (e.g. `--set guessLookaheadCandidates=6`, strings in quotes); `--ablate` re-evaluates every other value of every feature listed in *bench/features.js* (all values of a key with board-specific values) against the current version, `--ablate-key <key>` one feature. A value set this way applies to all boards: it also replaces that key's board-specific values in *boardSettings* (an explicitly set *boardSettings* is used as given)
 - Differences (Δ) are against the reference for the current version and against the current version for ablations; the variant list at the top names each base
 - The robustness gate fails on any error (including a game over MAX_GAME_TIME, 60 s) or a single step slower than SLOW_STEP_TIME (2 s, in *bench/run.js*). Games with a slower step (up to MAX_REPLAYED_SLOW_GAMES = 20) are replayed alone first, so machine load does not fail the gate
+- *Games played differently* counts the games in which any move differs from the base version (every step's interactions are fingerprinted, in order); a change meant only to be faster must show 0
 - *Expected win %* counts a game that reaches a forced position (no unknown cell can give information anymore, so every play has the same chance) with that position's exact win chance instead of its coin flips: same expected value, less noise. *Forced games* is the share of games that reach one. On boards with more bombs than cells outside the first click's 3x3 area it is *n/a*, as the website's placement is not uniform there; also for versions before the analysis mode (commit ed131a8), e.g. as *--compare* reference
 
 `node bench/verify-website.js` checks that the virtual game generates the same boards as the website code.
@@ -116,6 +117,6 @@ The solver itself is configured in the global object *solverConfig*:
 
 `node bench/verify-forced.js` computes optimal play over all bomb configurations in small endgames of real games and fails if the solver plays any of them below optimal, if a forced position could be played better than 1 / number of configurations, or if the benchmark's forced check disagrees with the brute force.
 
-Every pull request and push to master runs these checks on GitHub (*.github/workflows/checks.yml*): the three verifiers and `bench/run.js all --scale 0.2` against the base version. The robustness gate decides; the benchmark table, with the games played differently, is in the job summary, as a change may be meant to play differently.
+Every pull request and push to master runs these checks on GitHub (*.github/workflows/checks.yml*): the three verifiers and `bench/run.js all --scale 0.2` against the base version. The robustness gate decides; the benchmark table, with the games played differently (any move differs), is in the job summary, as a change may be meant to play differently.
 
 Evaluation results are logged in *bench/RESULTS.md*; state, findings and next steps are in *ROADMAP.md*. Prototypes and experiment scripts that were not adopted are kept in the branch *archive/prototypes* (never merged).
