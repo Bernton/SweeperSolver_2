@@ -3,7 +3,8 @@ let sweepStates = {
     solving: "solving",
     stuck: "stuck",
     solved: "solved",
-    death: "death"
+    death: "death",
+    invalid: "invalid" // no bomb configuration fits the board (e.g. a wrong flag set by hand): no move is made
 };
 
 let autoSweepConfig = {
@@ -22,48 +23,81 @@ let autoSweepConfig = {
 // Solver features; bench/features.js lists the alternatives that bench/run.js --ablate re-evaluates
 let solverConfig = {
     firstClickCornerOffset: 2, // null: first click in the center, n: n cells in from the top left corner (at most the center)
-    guessLookaheadCandidates: 3, // 0: guess the safest cell, n: of the n safest cells guess the one most likely to survive the next move too
+    guessLookaheadCandidates: 3, // 0 or 1: guess the safest cell, n: of the n safest cells guess the one most likely to survive the next move too
     guessLookaheadBudget: 20000, // max bomb combinations the look-ahead enumerates per guess, keeps large boards fast (null: no limit)
     endgameSearchMaxUnknowns: 28, // exact search for the guess with the best win chance when at most this many unknown cells are left (0: off)
-    endgameSearchBudget: 20000, // max bomb configurations plus search states per guess; above it the look-ahead decides
+    endgameSearchBudget: 20000, // max bomb configurations plus search states per guess; above it the look-ahead decides (null: no limit)
     // Values that differ for specific boards ("width x height / bombs"), tuned on those boards (bench/RESULTS.md)
     boardSettings: {
         "30x16/99": { firstClickCornerOffset: 3 }
     }
 };
 
+// Right clicks that turn a square of the given class into a flag: the website cycles blank, flag and, with its "marks"
+// option, question mark
+const RIGHT_CLICKS_TO_FLAG = { "square blank": 1, "square question": 2, "square bombflagged": 0 };
+// MouseEvent.button value of the right mouse button
+const RIGHT_MOUSE_BUTTON = 2;
+
 // The endgame search keeps bomb configurations as bit masks of 32 bit integers, which safely hold this many cells
 const ENDGAME_MAX_MASK_BITS = 30;
 
-let autoSweepStats = { gameStats: [] };
+// Kept on window, so pasting the script again keeps the stats of the games played so far ([k] resets them);
+// the game index continues after them, so new games are recorded as new entries
+let autoSweepStats = window.sweeperAutoSweepStats || { gameStats: [] };
+window.sweeperAutoSweepStats = autoSweepStats;
+autoSweepConfig.state.gameIndex = autoSweepStats.gameStats.length;
 
 disableEndOfGamePrompt();
 setKeyDownHandler();
+stopAutoSweepOfEarlierPaste();
 
 function disableEndOfGamePrompt() {
     prompt = () => "cancel";
 }
 
+// Replaces the handler of an earlier paste, so each key press is handled once, by the newest code
 function setKeyDownHandler() {
-    if (!window.sweepKeyDown) {
-        sweepKeyDown = keyDownHandler;
-        document.addEventListener("keydown", keyDownHandler);
+    if (window.sweepKeyDown) {
+        document.removeEventListener("keydown", window.sweepKeyDown);
     }
 
+    window.sweepKeyDown = keyDownHandler;
+    document.addEventListener("keydown", keyDownHandler);
+
+    // Input types that take typed text (a checkbox or radio button keeps the focus after a click but takes no text)
+    const TEXT_INPUT_TYPES = ["text", "number", "search", "email", "password", "tel", "url"];
+
     function keyDownHandler(e) {
+        let target = e.target || {};
+        let isTyping = target.isContentEditable || ["TEXTAREA", "SELECT"].includes(target.tagName) || (target.tagName === "INPUT" && TEXT_INPUT_TYPES.includes(target.type));
+
+        // Leave typing in the page's fields and browser shortcuts (Ctrl+S, Ctrl+D, ...) to the page and the browser
+        if (isTyping || e.ctrlKey || e.metaKey || e.altKey) {
+            return;
+        }
+
+        // Holding [w] or [e] keeps playing; the other keys act once per press
         switch (e.key) {
             case "w":
-                sweepStepGuessing();
-                break;
+                sweepStepGuessing(true, e.repeat);
+                return;
             case "W":
-                sweepStepGuessing(false);
-                break;
+                sweepStepGuessing(false, e.repeat);
+                return;
             case "e":
-                sweepStepCertain();
-                break;
+                sweepStepCertain(true, e.repeat);
+                return;
             case "E":
-                sweepStepCertain(false);
-                break;
+                sweepStepCertain(false, e.repeat);
+                return;
+        }
+
+        if (e.repeat) {
+            return;
+        }
+
+        switch (e.key) {
             case "s":
                 startAutoSweep(autoSweepConfig, autoSweepStats);
                 break;
@@ -86,22 +120,26 @@ function setKeyDownHandler() {
     }
 }
 
-function sweepStepCertain(withBoardInteraction = true) {
-    sweepStep(withBoardInteraction, false, "lastForSweepStepCertain" + withBoardInteraction);
+function sweepStepCertain(withBoardInteraction = true, isKeyRepeat = false) {
+    sweepStep(withBoardInteraction, false, isKeyRepeat);
 }
 
-function sweepStepGuessing(withBoardInteraction = true) {
-    sweepStep(withBoardInteraction, true, "lastForSweepStepGuessing" + withBoardInteraction);
+function sweepStepGuessing(withBoardInteraction = true, isKeyRepeat = false) {
+    sweepStep(withBoardInteraction, true, isKeyRepeat);
 }
 
-function sweepStep(withBoardInteraction, withGuessing, lastStatePropName) {
+// A held key repeats the step only while the steps change the board, so it does not print the same step over and over
+function sweepStep(withBoardInteraction, withGuessing, isKeyRepeat) {
     let boardState = getBoardState();
 
-    if (window[lastStatePropName] !== boardState) {
-        let sweepResult = sweepPage(withGuessing, true);
-        executeInteractions(sweepResult.interactions, withBoardInteraction);
-        window[lastStatePropName] = boardState;
+    // Same board as before the last step: the last step changed nothing
+    if (isKeyRepeat && window.sweepStepBoardState === boardState) {
+        return;
     }
+
+    let sweepResult = sweepPage(withGuessing, true);
+    executeInteractions(sweepResult.interactions, withBoardInteraction);
+    window.sweepStepBoardState = boardState;
 
     function getBoardState() {
         let boardState = "";
@@ -117,13 +155,45 @@ function sweepStep(withBoardInteraction, withGuessing, lastStatePropName) {
     }
 }
 
+// Each start gets a new run id and a running auto sweeper continues only while its id is the newest, so there is
+// never more than one running, also after pressing [s] again or pasting the script again (kept on window)
 function startAutoSweep(config, stats) {
+    let runId = (window.autoSweepRunId || 0) + 1;
+    window.autoSweepRunId = runId;
     config.isAutoSweepEnabled = true;
-    setTimeout(() => autoSweep(config, stats), 0);
+    config.state.lastSweepResult = { state: null, solver: null };
+
+    // A game the auto sweeper was playing continues: the time since its last step was a pause ([d]), not game time,
+    // and its end is recorded (e.g. a loss on its last move before [s] was pressed again)
+    let pausedGame = stats.gameStats[config.state.gameIndex];
+    let isPausedGame = pausedGame !== undefined && !pausedGame.finishState && pausedGame.lastStepTime !== undefined;
+
+    if (isPausedGame) {
+        pausedGame.pausedTime = (pausedGame.pausedTime || 0) + performance.now() - pausedGame.lastStepTime;
+    }
+
+    let currentState = sweepPage(false, false, config, isPausedGame ? stats : null).state;
+
+    // Warned already (no move possible until the board is corrected)
+    if (currentState === sweepStates.invalid) {
+        config.isAutoSweepEnabled = false;
+        return;
+    }
+
+    // A game that is already over was not played by the auto sweeper: start a new one instead of counting it
+    if (isNewGameState(currentState)) {
+        startNewGameForAutoSweep(config);
+    }
+
+    setTimeout(() => autoSweep(config, stats, runId), 0);
 }
 
 function stopAutoSweep(config) {
     config.isAutoSweepEnabled = false;
+}
+
+function stopAutoSweepOfEarlierPaste() {
+    window.autoSweepRunId = (window.autoSweepRunId || 0) + 1;
 }
 
 function formatLogGameStats(gamesIncluded = null) {
@@ -144,6 +214,7 @@ function formatLogStats(stats, gamesIncluded = null, logRaw = false) {
     gameStats = gameStats.filter((c) => c.finishState);
 
     if (gameStats.length === 0) {
+        console.log("No finished games yet (the stats count the games of the auto sweeper [s])");
         return;
     }
 
@@ -164,9 +235,16 @@ function formatLogStats(stats, gamesIncluded = null, logRaw = false) {
     }
 
     function logTimePerGame() {
-        let timePerGame = gameStats.map((g) => g.time);
-        let timeStats = mapStats(timePerGame);
-        logStat("Average/Max time", timeStats.average.toFixed(2) + " / " + timeStats.max.toFixed(2) + " ms");
+        let timeStats = mapStats(gameStats.map((g) => g.time));
+        logStat("Average/Max solver time", timeStats.average.toFixed(2) + " / " + timeStats.max.toFixed(2) + " ms");
+
+        // Games recorded before the wall clock time was added have none
+        let wallTimes = gameStats.filter((g) => g.wallTime !== undefined).map((g) => g.wallTime);
+
+        if (wallTimes.length > 0) {
+            let wallTimeStats = mapStats(wallTimes);
+            logStat("Average/Max game time", wallTimeStats.average.toFixed(2) + " / " + wallTimeStats.max.toFixed(2) + " ms (wall clock, with clicks and waits, without pauses)");
+        }
     }
 
     function logTimePerStep() {
@@ -174,13 +252,14 @@ function formatLogStats(stats, gamesIncluded = null, logRaw = false) {
         logStat("Highest step time", stepTimeStatsMax.toFixed(2) + " ms");
 
         let stepTimeStatsMax3 = gameStats.reduce((a, b) => Math.max(a, b.mostTime3Step), 0);
-        logStat("Highest [3] time", stepTimeStatsMax3.toFixed(2) + " ms");
+        logStat("Highest [3] time", stepTimeStatsMax3.toFixed(2) + " ms (full check, with guesses)");
     }
 
     function logWinningPercentage() {
         let wins = gameStats.reduce((a, b) => a + (b.finishState === sweepStates.solved ? 1 : 0), 0);
-        let winPercentage = (wins / gameStats.length) * 100.0;
-        logStat("Winning percentage", winPercentage.toFixed(2) + "% (" + wins + "/" + gameStats.length + ")");
+        let winRate = wins / gameStats.length;
+        let standardError = Math.sqrt((winRate * (1 - winRate)) / gameStats.length);
+        logStat("Winning percentage", (winRate * 100).toFixed(2) + "% ± " + (standardError * 100).toFixed(2) + " (" + wins + "/" + gameStats.length + ", ± one standard error)");
     }
 
     function logStat(title, formatStat) {
@@ -189,21 +268,13 @@ function formatLogStats(stats, gamesIncluded = null, logRaw = false) {
 
     function mapStats(values) {
         return {
-            min: min(values),
             max: max(values),
-            average: average(values),
-            median: median(values),
-            sum: sum(values),
-            values: values
+            average: average(values)
         };
     }
 
     function sum(values) {
         return values.reduce((a, b) => a + b);
-    }
-
-    function min(values) {
-        return values.reduce((a, b) => Math.min(a, b));
     }
 
     function max(values) {
@@ -212,12 +283,6 @@ function formatLogStats(stats, gamesIncluded = null, logRaw = false) {
 
     function average(values) {
         return sum(values) / values.length;
-    }
-
-    function median(values) {
-        let sortedValues = values.slice(0).sort((a, b) => a - b);
-        let half = Math.floor(sortedValues.length / 2);
-        return values.length % 2 ? values[half] : (values[half - 1] + values[half]) / 2.0;
     }
 }
 
@@ -250,11 +315,11 @@ function isGuessingSolver(solver) {
     return solver !== null && solver.includes("g");
 }
 
-function autoSweep(config, stats) {
+function autoSweep(config, stats, runId) {
     let iterations = config.virtualBatchSize;
 
     do {
-        if (!config.isAutoSweepEnabled) {
+        if (!config.isAutoSweepEnabled || runId !== window.autoSweepRunId) {
             return;
         }
 
@@ -262,8 +327,16 @@ function autoSweep(config, stats) {
         let restartNeeded = lastWasNewGameState(config);
 
         if (restartNeeded) {
-            if (config.state.lastSweepResult.state === "death" && !isGuessingSolver(config.state.lastSweepResult.solver)) {
-                throw new Error("Died while not guessing!");
+            let lastResult = config.state.lastSweepResult;
+
+            // Stops with the board as it is, so the position can be looked at; [s] starts a new game
+            if (lastResult.state === sweepStates.death && lastResult.solver !== null && !isGuessingSolver(lastResult.solver)) {
+                console.warn(
+                    "Auto sweeper stopped: lost on a move the solver considered certain (solver [" + lastResult.solver + "]). " +
+                        "The board was not what the solver assumed (e.g. a wrong flag set by hand, a click by hand or a wrong bomb count); otherwise it is a solver bug."
+                );
+                config.isAutoSweepEnabled = false;
+                return;
             }
 
             startNewGameForAutoSweep(config);
@@ -282,7 +355,7 @@ function autoSweep(config, stats) {
     function continueAutoSweep(config, stats, idleTime) {
         if (config.isAutoSweepEnabled) {
             let timeOutTime = idleTime + config.baseIdleTime;
-            setTimeout(() => autoSweep(config, stats), timeOutTime);
+            setTimeout(() => autoSweep(config, stats, runId), timeOutTime);
         }
     }
 
@@ -291,7 +364,9 @@ function autoSweep(config, stats) {
         let sweepResult = sweepPage(true, config.doLog, config, stats);
         let isRiddle = !config.isVirtualMode && config.isRiddleFinderMode && sweepResult.solver === "3";
 
-        if (isRiddle) {
+        if (sweepResult.state === sweepStates.invalid) {
+            config.isAutoSweepEnabled = false;
+        } else if (isRiddle) {
             config.isAutoSweepEnabled = false;
         } else {
             idleTime = isNewGameState(sweepResult.state) ? config.gameFinishedIdleTime : 0;
@@ -303,8 +378,11 @@ function autoSweep(config, stats) {
             config.state.lastSweepResult = sweepResult;
         }
 
-        if (config.isAutoSweepEnabled || isRiddle) {
-            executeInteractions(sweepResult.interactions, !isRiddle, config.isVirtualMode);
+        // A riddle is left for the player: its certain moves are not shown
+        if (isRiddle) {
+            console.log("Riddle: a certain move exists that only the full check [3] finds. Make it, then [s] continues ([shift+e] shows it, [e] makes it).");
+        } else if (config.isAutoSweepEnabled) {
+            executeInteractions(sweepResult.interactions, true, config.isVirtualMode);
         }
 
         return idleTime;
@@ -337,9 +415,11 @@ function executeInteractions(interactions, withBoardInteraction, isVirtualMode) 
     function executeInterationsOnBoard(interactions) {
         interactions.forEach((action) => {
             if (action.isFlag) {
-                if (action.cell.div.classList.value !== "square bombflagged") {
-                    simulate(action.cell.div, "mousedown", 2);
-                    simulate(action.cell.div, "mouseup", 2);
+                let rightClicks = RIGHT_CLICKS_TO_FLAG[action.cell.div.className] ?? 0;
+
+                for (let i = 0; i < rightClicks; i++) {
+                    simulate(action.cell.div, "mousedown", RIGHT_MOUSE_BUTTON);
+                    simulate(action.cell.div, "mouseup", RIGHT_MOUSE_BUTTON);
                 }
             } else {
                 simulate(action.cell.div, "mouseup");
@@ -440,7 +520,8 @@ function executeVirtualInteractions(interactions) {
         while (revealCells.length > 0) {
             let cell = revealCells.pop();
 
-            if (cell.isHidden) {
+            // Like the website, opening an area leaves flagged cells closed
+            if (cell.isHidden && !cell.isFlagged) {
                 cell.isHidden = false;
                 cell.isUnknown = false;
                 cell.isFlagged = false;
@@ -575,13 +656,14 @@ function sweepPage(withGuessing = true, doLog = true, config = null, stats = nul
         let gameIndex = config.state.gameIndex;
 
         if (!stats.gameStats[gameIndex]) {
-            stats.gameStats[gameIndex] = { index: gameIndex };
+            stats.gameStats[gameIndex] = { index: gameIndex, startTime: sweepT0 };
             stats.gameStats[gameIndex].stepStats = [];
         }
 
         let gameStats = stats.gameStats[gameIndex];
 
         if (!gameStats.finishState) {
+            gameStats.lastStepTime = sweepT1;
             gameStats.stepStats.push({
                 result: { state: sweepResult.state, solver: sweepResult.solver },
                 time: sweepTime
@@ -593,11 +675,12 @@ function sweepPage(withGuessing = true, doLog = true, config = null, stats = nul
 
                 let stepStats = gameStats.stepStats;
                 let wasGuessStep = (step) => step.result.state === sweepStates.solving && isGuessingSolver(step.result.solver);
-                let was3Step = (step) => step.result.state === sweepStates.solving && step.result.solver === "3";
+                let was3Step = (step) => step.result.state === sweepStates.solving && step.result.solver !== null && step.result.solver.startsWith("3");
                 gameStats.guesses = stepStats.reduce((a, b) => a + Number(wasGuessStep(b)), 0);
                 gameStats.time = stepStats.reduce((a, b) => a + b.time, 0);
                 gameStats.mostTimeStep = stepStats.reduce((a, b) => Math.max(a, b.time), 0);
                 gameStats.mostTime3Step = stepStats.reduce((a, b) => Math.max(a, was3Step(b) ? b.time : 0), 0);
+                gameStats.wallTime = sweepT1 - gameStats.startTime - (gameStats.pausedTime || 0);
 
                 if (!config.isRecordingStepStats) {
                     delete gameStats.stepStats;
@@ -711,6 +794,12 @@ function sweep(fieldToSweep, bombAmount, withGuessing = true, doLog = true, isAn
             return onStart(field);
         }
 
+        let invalidReason = findInvalidReason(field);
+
+        if (invalidReason) {
+            return onInvalidPosition(invalidReason);
+        }
+
         if (checkSolved()) {
             return onSolved();
         }
@@ -764,6 +853,10 @@ function sweep(fieldToSweep, bombAmount, withGuessing = true, doLog = true, isAn
 
     function checkCombinatorially(field, borderCellGroupings, outsideUnknowns, flagsLeft) {
         let resultInfo = checkAllValidCombinations(field, borderCellGroupings, outsideUnknowns, flagsLeft);
+
+        if (resultInfo.invalidReason) {
+            return onInvalidPosition(resultInfo.invalidReason);
+        }
 
         if (resultInfo.certainResultFound) {
             return onCheckCombinatorially(resultInfo, null, sweepStates.solving);
@@ -940,6 +1033,45 @@ function sweep(fieldToSweep, bombAmount, withGuessing = true, doLog = true, isAn
 
     function createCheckResult(state, solver = null) {
         return { state: state, solver: solver };
+    }
+
+    // The simple contradictions; the combination check finds the others (no bomb combination fits)
+    function findInvalidReason(field) {
+        let flagsLeft = getFlagsLeft(field);
+        let unknownAmount = cellCounts.hidden - cellCounts.flagged;
+
+        if (flagsLeft < 0) {
+            return cellCounts.flagged + " flags on the board, but only " + bombAmount + " bombs";
+        }
+
+        if (flagsLeft > unknownAmount) {
+            return flagsLeft + " bombs left, but only " + unknownAmount + " unknown cells";
+        }
+
+        let overflaggedDigit = null;
+
+        applyToCells(field, (cell) => {
+            if (!overflaggedDigit && cell.isDigit && cell.flaggedNeighborAmount > cell.value) {
+                overflaggedDigit = cell;
+            }
+        });
+
+        if (overflaggedDigit) {
+            return [formatCellName(overflaggedDigit) + " shows " + overflaggedDigit.value + ", but has " + overflaggedDigit.flaggedNeighborAmount + " flagged neighbors", overflaggedDigit.referenceCell.div ?? overflaggedDigit.referenceCell];
+        }
+
+        return null;
+    }
+
+    // Always shown (also when logging is off): the solver cannot continue until the board is corrected
+    function onInvalidPosition(reason) {
+        interactions.length = 0;
+        console.warn("[!] No bomb configuration fits the board, no move made. Check the flags set by hand and the bomb count:", ...[].concat(reason));
+        return createCheckResult(sweepStates.invalid);
+    }
+
+    function formatCellName(cell) {
+        return "(" + (cell.y + 1) + "_" + (cell.x + 1) + ")";
     }
 
     function onBombDeath() {
@@ -1161,6 +1293,12 @@ function sweep(fieldToSweep, bombAmount, withGuessing = true, doLog = true, isAn
             let groupingFlagsLeft = totalFlagsLeft - leastBombsCount;
             let searchResult = checkGrouping(borderCellGroupings[i], groupingFlagsLeft);
 
+            if (searchResult.validCombinations.length === 0 && !isAnalysis) {
+                let digit = borderCellGroupings[i].digits[0];
+                resultInfo.invalidReason = ["no bomb combination fits the digits around " + formatCellName(digit), digit.referenceCell.div ?? digit.referenceCell];
+                return resultInfo;
+            }
+
             if (searchResult.certainResultFound && !isAnalysis) {
                 resultInfo.certainResultFound = true;
                 break;
@@ -1176,6 +1314,9 @@ function sweep(fieldToSweep, bombAmount, withGuessing = true, doLog = true, isAn
             if (isAnalysis) {
                 resultInfo.analysis = analyzeCombinations(combinedCheckResult);
                 resultInfo.analysis.combinationAmount = groupingCheckResults.reduce((a, b) => a + b.validCombinations.length, 0);
+            } else if (combinedCheckResult.mergedSummaries.length === 0) {
+                resultInfo.invalidReason = "no bomb combination fits the digits together with the " + totalFlagsLeft + " bombs left";
+                return resultInfo;
             } else if (combinedCheckResult.certainResultFound) {
                 resultInfo.certainResultFound = true;
             } else {
@@ -2041,7 +2182,7 @@ function sweep(fieldToSweep, bombAmount, withGuessing = true, doLog = true, isAn
 
             let neighborMasks = unknowns.map(maskOf);
             let flaggedNeighbors = unknowns.map((cell) => cell.flaggedNeighborAmount);
-            let result = searchEndgame(unknowns.length, totalFlagsLeft, digits, digitsOfCells, neighborMasks, flaggedNeighbors, settings.endgameSearchBudget);
+            let result = searchEndgame(unknowns.length, totalFlagsLeft, digits, digitsOfCells, neighborMasks, flaggedNeighbors, settings.endgameSearchBudget ?? Infinity);
             return result ? Object.assign(result, { unknowns: unknowns }) : null;
         }
 
@@ -2084,6 +2225,10 @@ function sweep(fieldToSweep, bombAmount, withGuessing = true, doLog = true, isAn
         function getEvaluationDescription(cellProbs) {
             if (endgameConfigurationAmount !== null) {
                 return "chance to win the game with best play, exact search over all " + endgameConfigurationAmount + " bomb configurations (higher is better)";
+            }
+
+            if (settings.guessLookaheadCandidates > 1 && !cellProbs.some((cellProb) => cellProb.evaluation !== undefined)) {
+                return "not computed, the look-ahead would exceed guessLookaheadBudget: the cell with the lowest bomb probability is guessed";
             }
 
             if (settings.guessLookaheadCandidates > 1) {

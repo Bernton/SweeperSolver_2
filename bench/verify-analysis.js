@@ -15,6 +15,8 @@ const MAX_BRUTE_FORCE_UNKNOWNS = 22;
 // The analysis counts configurations in log space, so the count comes back with rounding errors
 const COUNT_RELATIVE_TOLERANCE = 1e-6;
 const SAFETY_TOLERANCE = 1e-9;
+// Mismatches printed in detail (all are counted)
+const MAX_PRINTED_MISMATCHES = 5;
 
 const games = Number(process.argv[2] || DEFAULT_GAMES_PER_BOARD);
 const boards = [
@@ -98,7 +100,7 @@ function checkPosition(field, board, unknowns, seed) {
             if (!isCountOk || !isSafetyOk) {
                 mismatches += 1;
 
-                if (mismatches <= 5) {
+                if (mismatches <= MAX_PRINTED_MISMATCHES) {
                     console.log("Mismatch: " + board.width + "x" + board.height + "/" + board.bombs + " seed " + seed + ", cell " + cell.x + "," + cell.y + " = " + value +
                         ": configurations " + count + " (expected " + matching.length + "), safety " + analysis.bestSafety + " (expected " + expectedSafety + ")");
                 }

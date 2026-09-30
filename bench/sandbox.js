@@ -34,16 +34,20 @@ function createSolver(source, configOverrides = {}) {
         );
     }
 
+    // The forced check needs the analysis mode of sweep() (since commit ed131a8); older versions, e.g. as --compare
+    // reference, play without it and have no expected win
+    let hasForcedCheck = source.includes("isAnalysis");
+
     return {
-        playGame: (board, seed) => playGame(context, board, seed),
+        playGame: (board, seed) => playGame(context, board, seed, hasForcedCheck),
         getConfig: () => vm.runInContext('typeof solverConfig === "undefined" ? {} : JSON.parse(JSON.stringify(solverConfig))', context)
     };
 }
 
-function playGame(context, board, seed) {
+function playGame(context, board, seed, hasForcedCheck = true) {
     let gameConfig = { width: board.width, height: board.height, bombAmount: board.bombs };
     let config = { isVirtualMode: true, virtualGameConfig: gameConfig };
-    let result = { won: false, guesses: 0, steps: 0, time: 0, maxStepTime: 0, error: null, forcedWinChance: null };
+    let result = { won: false, guesses: 0, steps: 0, time: 0, maxStepTime: 0, error: null, forcedWinChance: null, hasForcedCheck: hasForcedCheck };
 
     try {
         context.setWindowSeedRng();
@@ -73,7 +77,7 @@ function playGame(context, board, seed) {
             if (context.isGuessingSolver(sweepResult.solver)) {
                 result.guesses += 1;
 
-                if (result.forcedWinChance === null) {
+                if (hasForcedCheck && result.forcedWinChance === null) {
                     result.forcedWinChance = getForcedWinChance(context, board.bombs);
                 }
             }
@@ -122,4 +126,4 @@ function getForcedWinChance(context, bombs) {
     return Math.exp(-context.sweep(field, bombs, false, false, true).analysis.logWeight);
 }
 
-module.exports = { createSolver, mulberry32 };
+module.exports = { createSolver, mulberry32, getForcedWinChance };

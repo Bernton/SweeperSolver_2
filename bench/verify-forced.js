@@ -1,24 +1,36 @@
-// Checks the forced-position rule used by the benchmark's expected win (bench/sandbox.js, getForcedWinChance) and
-// measures how far the solver is from optimal play in small endgames.
+// Checks the forced-position rule of the benchmark's expected win and the solver's play in small endgames.
 //
-// For endgame positions of real games it computes exactly, over all bomb configurations:
+// For endgame positions of real games it computes by brute force, over all bomb configurations:
 // - the optimal win probability (search over all adaptive strategies),
-// - the solver's win probability from that position (played once against every configuration).
-// Forced positions (no unknown cell can give information) must have 1 / number of configurations as optimum, and the
-// solver must reach it. For the other positions the gap is what an exact endgame search could gain.
+// - the solver's win probability from that position (played once against every configuration),
+// - whether the position is forced (no unknown cell can give information).
+// It fails if the benchmark's forced check (bench/sandbox.js, getForcedWinChance) disagrees with the brute force, if a
+// forced position has another optimum than 1 / number of configurations, if the solver differs from the optimum
+// anywhere (its exact endgame search covers these positions; below it is a bug or a search over its budget, above it a
+// bug in the brute force), or if no position was checked.
+// Definition and proof of forced positions: bench/RESULTS.md, entry 13.
 //
 // Usage: node bench/verify-forced.js [games=1500]
 
 const fs = require("fs");
 const path = require("path");
 const vm = require("vm");
-const { mulberry32 } = require("./sandbox");
+const { mulberry32, getForcedWinChance } = require("./sandbox");
 
 const DEFAULT_GAMES = 1500;
 // The exact search is exponential in the unknown cells; beyond about this many it takes too long
 const MAX_SEARCHED_UNKNOWNS = 12;
 
+// Relative tolerance for the benchmark's forced win chance, computed in log space
+const WIN_CHANCE_TOLERANCE = 1e-9;
+
 const games = Number(process.argv[2] || DEFAULT_GAMES);
+
+if (!Number.isInteger(games) || games < 1) {
+    console.error("Error: the number of games must be a whole number of at least 1, got: " + process.argv[2]);
+    process.exit(2);
+}
+
 const board = { width: 30, height: 16, bombs: 99 };
 const gameConfig = { width: board.width, height: board.height, bombAmount: board.bombs };
 const config = { isVirtualMode: true, virtualGameConfig: gameConfig };
@@ -35,6 +47,7 @@ vm.runInContext(fs.readFileSync(path.join(__dirname, "..", "sweeper.js"), "utf8"
 let forced = [];
 let other = [];
 let forcedMismatches = 0;
+let forcedCheckMismatches = 0;
 
 for (let seed = 1; seed <= games; seed++) {
     context.setWindowSeedRng();
@@ -53,6 +66,11 @@ for (let seed = 1; seed <= games; seed++) {
         if (context.isGuessingSolver(sweepResult.solver) && field.flat().filter((cell) => cell.isUnknown).length <= MAX_SEARCHED_UNKNOWNS) {
             let snapshot = field.map((row) => row.map((cell) => ({ ...cell, neighbors: undefined })));
             let position = analyzePosition(field);
+            let forcedWinChance = getForcedWinChance(context, board.bombs);
+            let isForcedCheckRight = position.isForced
+                ? forcedWinChance !== null && Math.abs(forcedWinChance * position.configurations.length - 1) < WIN_CHANCE_TOLERANCE
+                : forcedWinChance === null;
+            forcedCheckMismatches += isForcedCheckRight ? 0 : 1;
             let solverWins = position.configurations.reduce((a, configuration) => a + playFrom(snapshot, position.unknowns, configuration), 0);
             let entry = { optimal: position.optimalWins / position.configurations.length, solver: solverWins / position.configurations.length };
 
@@ -72,8 +90,14 @@ for (let seed = 1; seed <= games; seed++) {
 
 report("Forced positions", forced);
 report("Other positions", other);
-console.log("Forced positions where the optimum or the solver is not exactly one configuration: " + forcedMismatches + (forcedMismatches === 0 ? " (PASS)" : " (FAIL)"));
-process.exitCode = forcedMismatches === 0 ? 0 : 1;
+let notOptimal = forced.concat(other).filter((entry) => entry.optimal !== entry.solver).length;
+let checked = forced.length + other.length;
+console.log("Forced positions where the optimum or the solver is not exactly one configuration: " + forcedMismatches);
+console.log("Positions where the benchmark's forced check disagrees with the brute force: " + forcedCheckMismatches);
+console.log("Positions where the solver differs from the optimum: " + notOptimal);
+let isPassed = checked > 0 && forcedMismatches === 0 && forcedCheckMismatches === 0 && notOptimal === 0;
+console.log(isPassed ? "PASS" : "FAIL");
+process.exitCode = isPassed ? 0 : 1;
 
 function report(name, entries) {
     let sum = (f) => entries.reduce((a, entry) => a + f(entry), 0);
