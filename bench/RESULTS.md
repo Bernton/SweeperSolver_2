@@ -632,7 +632,7 @@ redeclaring `let` variables; Firefox's console may refuse a second paste of the 
   digit with more flagged neighbors than its number, a grouping without any valid bomb combination, and no combination
   that fits the bombs left. The auto sweeper stops on it.
 - L5: each start of the auto sweeper gets a run id and only the newest continues (repeated [s], held [s], pasting
-  again); pasting again replaces the key handler and keeps the stats.
+  again); pasting again replaces the key handler and keeps the stats (the game index did not continue: fixed in entry 22).
 - L6: keys are ignored while typing in input fields and with Ctrl, Alt or Meta; [s], [d], [i], [o], [k], [l] ignore
   key repeat.
 

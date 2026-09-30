@@ -243,7 +243,7 @@ function formatLogStats(stats, gamesIncluded = null, logRaw = false) {
 
         if (wallTimes.length > 0) {
             let wallTimeStats = mapStats(wallTimes);
-            logStat("Average/Max game time", wallTimeStats.average.toFixed(2) + " / " + wallTimeStats.max.toFixed(2) + " ms (wall clock, with clicks and waits)");
+            logStat("Average/Max game time", wallTimeStats.average.toFixed(2) + " / " + wallTimeStats.max.toFixed(2) + " ms (wall clock, with clicks and waits, without pauses)");
         }
     }
 
