@@ -22,6 +22,9 @@ State, review findings and the prioritized plan. Measurements and history are in
   evaluation for every candidate.
 - Benchmark: headless, website-exact boards (verified), paired comparisons, feature ablation, expected win. 10,000 expert
   games take about 1-2.5 minutes on 4 threads, depending on machine load (about 25 ms of solver time per game).
+- Continuous checks (GitHub Actions, `.github/workflows/checks.yml`): every pull request and push to master runs the
+  three verifiers and `bench/run.js all --scale 0.2` against the base version; the robustness gate decides, and the
+  table (with the games played differently) is in the job summary.
 
 ## Archive branch
 
@@ -131,8 +134,8 @@ usability, and the owner's rules (one copy/pastable script, no magic numbers).
 | - | C8 | Legacy browser virtual mode and `Math.seedrandom` in the pasted script | owner decision | | | | CH |
 
 **Execution order** (the ranking, adjusted for dependencies). Done: L1, L2, L3, L5, L6 (entry 20), B1, B3, B7, B11,
-C3, C7, C9, L8, L10, L12 and parts of B5 and B9 (entry 21), fixes from the review of the pull request (entry 22).
-Open: L4 waits for a check on the website. Next, with the owner's focus on aspects other than win rate: (1) B12, then
+C3, C7, C9, L8, L10, L12 and parts of B5 and B9 (entry 21), fixes from the review of the pull request (entry 22), the archive branch for prototypes, continuous checks (part
+of B8). Open: L4 waits for a check on the website. Next, with the owner's focus on aspects other than win rate: (1) B12, then
 S1-S4 (B12 proves they change no move); (2) C2, C1, C6, L13; (3) L7, B4, B5, C5; then the rest by rank. Win-rate work
 waits: the B2 adoption rule, then W1. C4 goes with the first change that needs it (S7, W3).
 
@@ -264,8 +267,8 @@ waits: the B2 adoption rule, then W1. C4 goes with the first change that needs i
 - **B7** **Fixed** (entry 21). (low-medium) `verify-forced` never checks the benchmark's own `getForcedWinChance`; add the cross-check (the
   review's brute force: 505 positions, 0 mismatches) and mark expected win "n/a" on overfull boards. The metric needs
   no solver optimality: in a forced position any play that never reveals a certain bomb wins with exactly 1/N.
-- **B8** (medium) One check command (the three verifiers plus a quick gate), per-game JSON output, and sequential
-  testing to stop clear comparisons early.
+- **B8** (medium) One check command (the three verifiers plus a quick gate; done as the continuous checks workflow,
+  which runs them on every pull request), per-game JSON output, and sequential testing to stop clear comparisons early.
 - **B9** (low) `--seed 0` makes game 0 unseeded (fixed, entry 21: seeds below 1 are rejected); the normal approximation is
   weak when few games differ (open).
 - **B11** **Fixed** (entries 21, 22). (low, verified) Command-line arguments are not validated (`--games abc` gives NaN games, `--set key` without

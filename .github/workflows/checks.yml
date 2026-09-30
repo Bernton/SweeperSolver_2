@@ -1,0 +1,58 @@
+# Checks for every pull request and every push to master: the verifiers and a short benchmark (bench/, no dependencies).
+# The benchmark compares against the pull request's base (or the previous master) on the same boards and fails on the
+# robustness gate (any error, or a step slower than SLOW_STEP_TIME); how many games play differently is reported in the
+# job summary, as a change may be meant to play differently.
+name: Checks
+
+on:
+  pull_request:
+  push:
+    branches: [master]
+
+env:
+  # Share of every benchmark preset's games (bench/presets.js): all suites at this scale take about a minute or two
+  BENCH_SCALE: 0.2
+
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30 # a normal run takes a few minutes; a hung run is stopped
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # the benchmark reads the base version of sweeper.js from git
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Virtual game places bombs like the website
+        run: node bench/verify-website.js
+
+      - name: Look-ahead analysis against brute force
+        run: node bench/verify-analysis.js
+
+      - name: Forced positions and optimal endgame play
+        run: node bench/verify-forced.js
+
+      - name: Benchmark against the base version (robustness gate)
+        shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BASE_REF: ${{ github.base_ref }}
+          BEFORE: ${{ github.event.before }}
+        run: |
+          if [ "$EVENT_NAME" = "pull_request" ]; then
+            base="origin/$BASE_REF"
+          else
+            base="$BEFORE"
+          fi
+
+          compare=()
+          if git cat-file -e "$base:sweeper.js" 2>/dev/null; then
+            compare=(--compare "$base")
+          else
+            echo "No base version to compare with ($base), running the current version only"
+          fi
+
+          node bench/run.js all --scale "$BENCH_SCALE" "${compare[@]}" | tee -a "$GITHUB_STEP_SUMMARY"
