@@ -116,4 +116,4 @@ The solver itself is configured in the global object *solverConfig*:
 
 `node bench/verify-forced.js` computes optimal play over all bomb configurations in small endgames of real games and fails if the solver plays any of them below optimal, if a forced position could be played better than 1 / number of configurations, or if the benchmark's forced check disagrees with the brute force.
 
-Evaluation results are logged in *bench/RESULTS.md*; state, findings and next steps are in *ROADMAP.md*.
+Evaluation results are logged in *bench/RESULTS.md*; state, findings and next steps are in *ROADMAP.md*. Prototypes and experiment scripts that were not adopted are kept in the branch *archive/prototypes* (never merged).
